@@ -23,11 +23,20 @@ import {
     ODENode
 } from './ode.js';
 
+import {
+
+    OdeNodeVisualizer,
+    VisualizationSystem
+} from './visual.js';
+
+import {
+    addPlayPauseButton,
+    createOdeGui
+} from './gui.js';
+
+
 // Create audio context and worklet node
 let audioContext = null;
-
-// UI elements
-let playButton;
 
 async function initAudio() {
     if (!audioContext) {
@@ -50,10 +59,8 @@ async function initWABT() {
     return wabtInstance;
 }
 
-
-
 // Example usage
-const defaultConfig = {
+const oscillatorConfig = {
     name: "Oscillator",
     equations: {
         x: "-TWO_PI*w * y", // dx/dt = -w*y
@@ -66,23 +73,41 @@ const defaultConfig = {
     method: 'rk4'
 };
 
+const lorenzConfig = {
+    name: "Lorenz",
+    equations: {
+        x: "sigma * (y - x)",
+        y: "x * (rho - z) - y",
+        z: "x * y - beta * z"
+    },
+    parameters: {
+        sigma: 10,
+        rho: 28,
+        beta: 8 / 3
+    },
+    initialValues: { x: 1, y: 1, z: 1 }
+}
 
 // wait for audio context and wabt instance to be initialized
 await initAudio();
 await initWABT();
 
+
 // Stop audio context from starting automatically
 audioContext.suspend();
 
+let mainguiconfig = {
+    play: false
+};
+addPlayPauseButton(mainguiconfig, audioContext);
 
-const node = new ODENode(audioContext, wabtInstance, defaultConfig);
 
-playButton = document.getElementById('play');
-// Use play button to toggle audio context
-playButton.addEventListener('click', () => {
-    if (audioContext.state === 'suspended') {
-        audioContext.resume();
-    } else {
-        audioContext.suspend();
-    }
-});
+const visSystem = new VisualizationSystem(audioContext);
+
+const oscillatorNode = new ODENode(audioContext, wabtInstance, oscillatorConfig);
+// const lorenzNode = new ODENode(audioContext, wabtInstance, lorenzConfig);
+// Add ODE nodes to visualize
+visSystem.addOdeNode(oscillatorNode);
+// visSystem.addOdeNode(lorenzNode);
+// Start visualization
+visSystem.startVisualization();

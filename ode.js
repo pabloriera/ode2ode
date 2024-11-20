@@ -185,8 +185,21 @@ function compileEquation(wabtInstance, equations, initialValues, parameters) {
 import { createOdeGui } from './gui.js';
 
 class ODENode {
-        constructor(audioContext, wabtInstance, config) {
+    constructor(audioContext, wabtInstance, config) {
         this.config = config;
+        this.audioContext = audioContext;
+
+        // Store initial parameter values for reset
+        this.initialParameters = { ...config.parameters };
+        this.initialGain = 0.1;
+
+        // Add visualization type to config
+        this.config.visualizationType = 'oscilloscope';
+        this.config.gain = this.initialGain;
+        
+        // Add reset and visualization change methods to config for GUI
+        this.config.resetInitialConditions = () => this.resetInitialConditions();
+        this.config.changeVisualization = () => this.cycleVisualization();
 
         // block until the compileEquation function returns the wasm bytes
         const wasmBytes = compileEquation(
@@ -195,8 +208,6 @@ class ODENode {
             config.initialValues, 
             config.parameters
         );
-
-        this.config.gain = 0.1
 
         // Initialize base AudioWorkletNode         
         this.odeNode = new AudioWorkletNode(audioContext, "odeint-generator", {
@@ -208,27 +219,42 @@ class ODENode {
                 method: this.config.method,
             },
             numberOfInputs: 0,
-            numberOfOutputs: 1,
-            outputChannelCount: [2]
+            numberOfOutputs: Object.keys(this.config.equations).length,
+            outputChannelCount: Array(Object.keys(this.config.equations).length).fill(2)
         });
 
         if (debug) console.log('Initializing ODENode', this.odeNode);
         this.init(audioContext);
         
-        createOdeGui(this.config, this.updateParameters);
+        // Create GUI with all callback functions
+        this.gui = createOdeGui(
+            this.config, 
+            () => this.updateParameters(),
+            () => this.resetInitialConditions(),
+        );
     }
 
     updateParameters = () => {
         this.odeNode.port.postMessage({
             type: 'updateParameters',
-            parameters: this.config.parameters
+            parameters: this.config.parameters,
         });
         this.gainNode.gain.value = this.config.gain;
     }
 
+    resetInitialConditions = () => {
+        this.odeNode.port.postMessage({
+            type: 'resetInitialConditions',
+            initialValues: this.config.initialValues,
+        });
+    }
+
+
+    setVisualizationChangeCallback(callback) {
+        this.onVisualizationChange = callback;
+    }
 
     init(audioContext) {
-
         // Create and connect gain node
         this.gainNode = audioContext.createGain();
         this.gainNode.gain.value = this.config.gain;
@@ -242,7 +268,6 @@ class ODENode {
             gainNode: this.gainNode,
             destination: audioContext.destination
         });       
-       
     }
 }
 
