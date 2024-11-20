@@ -1,4 +1,4 @@
-let debug = false;
+let debug = true;
 
 function rungeKutta4(f, y, t, h, parameters, debug = false) {
     const y_curr = new Float64Array(y.length);
@@ -114,6 +114,14 @@ class ODEIntProcessor extends AudioWorkletProcessor {
 
         this.sampleRate = 44100;
 
+        this.port.onmessage = (event) => {
+            if (debug) console.log('Received message:', event.data);
+            if (event.data.type === 'updateParameters') {
+                this.parameterValues = new Float64Array(Object.values(event.data.parameters));
+                if (debug) console.log('Updated parameters:', Array.from(this.parameterValues).join(', '));
+            }
+        };
+
         // Log initialization values
         console.log('Initializing ODEIntProcessor with:', {
             parameters: this.customParameters,
@@ -122,6 +130,7 @@ class ODEIntProcessor extends AudioWorkletProcessor {
             sampleRate: this.sampleRate,
             integrationMethod: this.integrationMethod === euler ? 'euler' : 'rk4'
         });
+
 
 
     }

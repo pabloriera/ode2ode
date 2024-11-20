@@ -42,11 +42,19 @@ async function initAudio() {
     return true;
 }
 
+let wabtInstance = null;
+async function initWABT() {
+    if (!wabtInstance) {
+        wabtInstance = await window.WabtModule();
+    }
+    return wabtInstance;
+}
 
 
 
 // Example usage
 const defaultConfig = {
+    name: "Oscillator",
     equations: {
         x: "-TWO_PI*w * y", // dx/dt = -w*y
         y: "TWO_PI*w * x" // dy/dt = w*x
@@ -58,101 +66,23 @@ const defaultConfig = {
     method: 'rk4'
 };
 
-window.addEventListener('load', async() => {
-    // Create control box for sliders
-    const controlBox = document.createElement('div');
-    controlBox.className = 'control-box';
 
-    // Create gain slider
-    const gainControl = document.createElement('div');
-    gainControl.className = 'control';
+// wait for audio context and wabt instance to be initialized
+await initAudio();
+await initWABT();
 
-    const gainLabel = document.createElement('span');
-    gainLabel.className = 'control-label';
-    gainLabel.innerHTML = '<label for="gain">Gain:</label>';
+// Stop audio context from starting automatically
+audioContext.suspend();
 
-    const gainSlider = document.createElement('input');
-    gainSlider.type = 'range';
-    gainSlider.id = 'gain';
-    gainSlider.min = '0';
-    gainSlider.max = '1';
-    gainSlider.step = '0.01';
-    gainSlider.value = defaultConfig.gain || '0.8';
 
-    const gainValue = document.createElement('span');
-    gainValue.id = 'gain-value';
-    gainValue.textContent = defaultConfig.gain || '0.8';
+const node = new ODENode(audioContext, wabtInstance, defaultConfig);
 
-    gainControl.appendChild(gainLabel);
-    gainControl.appendChild(gainSlider);
-    gainControl.appendChild(gainValue);
-    controlBox.appendChild(gainControl);
-
-    // Create sliders for parameters
-    for (const [name, value] of Object.entries(defaultConfig.parameters)) {
-        const control = document.createElement('div');
-        control.className = 'control';
-
-        const label = document.createElement('span');
-        label.className = 'control-label';
-        label.innerHTML = `<label for="${name}">${name}:</label>`;
-
-        const slider = document.createElement('input');
-        slider.type = 'range';
-        slider.id = name;
-        slider.min = value / 2;
-        slider.max = value * 2;
-        slider.step = value / 100;
-        slider.value = value;
-
-        const valueDisplay = document.createElement('span');
-        valueDisplay.id = `${name}-value`;
-        valueDisplay.textContent = value;
-
-        control.appendChild(label);
-        control.appendChild(slider);
-        control.appendChild(valueDisplay);
-        controlBox.appendChild(control);
+playButton = document.getElementById('play');
+// Use play button to toggle audio context
+playButton.addEventListener('click', () => {
+    if (audioContext.state === 'suspended') {
+        audioContext.resume();
+    } else {
+        audioContext.suspend();
     }
-
-    // Insert control box after play button
-    playButton = document.getElementById('play');
-    playButton.parentNode.insertBefore(controlBox, playButton.nextSibling);
-
-    // Add play button click handler
-    // Play button toggles between playing and pausing  
-    // only create the node if it's not already created
-    playButton.addEventListener('click', async() => {
-        if (!audioContext) {
-            if (await initAudio()) {
-                const node = new ODENode(audioContext, defaultConfig);
-                if (node) {
-
-                    // Update gain slider and display
-                    gainSlider.addEventListener('input', (e) => {
-                        gainNode.gain.value = e.target.value;
-                        document.getElementById('gain-value').textContent = e.target.value;
-                    });
-
-                    // Update parameter sliders and displays
-                    for (const [name, value] of Object.entries(defaultConfig.parameters)) {
-                        const slider = document.getElementById(name);
-                        slider.addEventListener('input', (e) => {
-                            node.port.postMessage({
-                                type: 'parameterChange',
-                                name: name,
-                                value: parseFloat(e.target.value)
-                            });
-                            document.getElementById(`${name}-value`).textContent = e.target.value;
-                        });
-                    }
-                }
-                audioContext.resume();
-            }
-        } else if (audioContext.state === 'suspended') {
-            audioContext.resume();
-        } else if (audioContext.state === 'running') {
-            audioContext.suspend();
-        }
-    });
 });

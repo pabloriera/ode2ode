@@ -144,11 +144,9 @@ function initWABT() {
     return wabtInstance;
 }
 
-function compileEquation(equations, initialValues, parameters) {
+function compileEquation(wabtInstance, equations, initialValues, parameters) {
     // First ensure WABT is initialized
-    const wabt = initWABT();
-
-    if (debug) console.log("WABT instance:", wabt);
+    if (debug) console.log("WABT instance:", wabtInstance);
 
     // Rest of the function remains the same
     const parsedEqns = parseEquations(equations, initialValues, parameters);
@@ -173,7 +171,7 @@ function compileEquation(equations, initialValues, parameters) {
     if (debug) console.log("Generated WAT source:", watSource);
 
     try {
-        const module = wabt.parseWat("equation.wat", watSource);
+        const module = wabtInstance.parseWat("equation.wat", watSource);
         const { buffer } = module.toBinary({});
         return buffer;
     } catch (error) {
@@ -183,59 +181,71 @@ function compileEquation(equations, initialValues, parameters) {
     }
 }
 
+// Create GUI
+import { createOdeGui } from './gui.js';
+
 class ODENode {
-        constructor(audioContext, config) {
+        constructor(audioContext, wabtInstance, config) {
+        this.config = config;
 
         // block until the compileEquation function returns the wasm bytes
         const wasmBytes = compileEquation(
+            wabtInstance,
             config.equations,
             config.initialValues, 
             config.parameters
         );
 
-        // Initialize base AudioWorkletNode first
+        this.config.gain = 0.1
+
+        // Initialize base AudioWorkletNode         
         this.odeNode = new AudioWorkletNode(audioContext, "odeint-generator", {
             processorOptions: {
                 wasmBytes: wasmBytes,
-                initialValues: config.initialValues,
-                parameters: config.parameters,
-                equations: config.equations,
-                method: config.method
+                initialValues: this.config.initialValues,
+                parameters: this.config.parameters,
+                equations: this.config.equations,
+                method: this.config.method,
             },
             numberOfInputs: 0,
             numberOfOutputs: 1,
             outputChannelCount: [2]
         });
 
-        this.init(audioContext, config);
+        if (debug) console.log('Initializing ODENode', this.odeNode);
+        this.init(audioContext);
+        
+        createOdeGui(this.config, this.updateParameters);
     }
 
-    init(audioContext, config) {
+    updateParameters = () => {
+        this.odeNode.port.postMessage({
+            type: 'updateParameters',
+            parameters: this.config.parameters
+        });
+        this.gainNode.gain.value = this.config.gain;
+    }
+
+
+    init(audioContext) {
 
         // Create and connect gain node
         this.gainNode = audioContext.createGain();
-        this.gainNode.gain.value = 0.1;
+        this.gainNode.gain.value = this.config.gain;
 
         // Connect audio chain
         this.odeNode.connect(this.gainNode);
         this.gainNode.connect(audioContext.destination);
 
-        console.log('Audio chain connected:', {
+        if (debug) console.log('Audio chain connected:', {
             odeNode: this.odeNode,
             gainNode: this.gainNode,
             destination: audioContext.destination
-            });
+        });       
        
     }
 }
 
-// Initialize WABT immediately when the file loads
-window.WabtModule().then(instance => {
-    wabtInstance = instance;
-    console.log("WABT initialized successfully");
-}).catch(error => {
-    console.error("Failed to initialize WABT:", error);
-});
 
 export {
     parseEquations,
