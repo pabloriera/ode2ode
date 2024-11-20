@@ -1,3 +1,5 @@
+let debug = false;
+
 /*
 This website is a playground for playing with ODEs in the browser.
 
@@ -17,20 +19,21 @@ The AudioWorkletNode will output the values of x and y as a stereo audio signal.
 
 */
 
+import {
+    ODENode
+} from './ode.js';
+
 // Create audio context and worklet node
 let audioContext = null;
-let workletNode = null;
-let gainNode = null;
 
 // UI elements
 let playButton;
-let parameterInputs = {};
 
 async function initAudio() {
     if (!audioContext) {
         try {
             audioContext = new AudioContext();
-            await audioContext.audioWorklet.addModule('rk4-generator.js');
+            await audioContext.audioWorklet.addModule('odeint-generator.js');
         } catch (e) {
             console.error("Failed to initialize audio:", e);
             return false;
@@ -39,70 +42,8 @@ async function initAudio() {
     return true;
 }
 
-/* Parse the equations into a string. The variable names must be 
-replaced with an array using the names in initialValues. The parameters must be
-replaced with an object using the names in parameters.
-*/
-function parseEquations(equations, initialValues, parameters) {
-    const varNames = Object.keys(initialValues);
-    const paramNames = Object.keys(parameters);
-    const equationStrings = Object.values(equations);
 
-    let arrayExpr = '[';
-    equationStrings.forEach((eqn, i) => {
-        let expr = eqn;
-        // Replace TWO_PI with actual value
-        expr = expr.replace(/TWO_PI/g, (2 * Math.PI).toString());
 
-        // First replace variables with unique tokens
-        varNames.forEach((name, j) => {
-            expr = expr.replace(new RegExp('\\b' + name + '\\b', 'g'), `__VAR_${j}__`);
-        });
-
-        // Then replace tokens with array indices
-        varNames.forEach((name, j) => {
-            expr = expr.replace(new RegExp(`__VAR_${j}__`, 'g'), `y[${j}]`);
-        });
-
-        // Replace parameter names with array indices
-        paramNames.forEach((name, j) => {
-            expr = expr.replace(new RegExp('\\b' + name + '\\b', 'g'), `p[${j}]`);
-        });
-
-        arrayExpr += expr;
-        if (i < equationStrings.length - 1) arrayExpr += ', ';
-    });
-    arrayExpr += ']';
-
-    return arrayExpr;
-}
-
-function createODENode(config) {
-    const options = {
-        processorOptions: {
-            equationString: parseEquations(config.equations, config.initialValues, config.parameters),
-            initialValues: config.initialValues,
-            parameters: config.parameters
-        },
-        outputChannelCount: [2]
-    };
-
-    try {
-        workletNode = new AudioWorkletNode(audioContext, "rk4-generator", options);
-        gainNode = audioContext.createGain();
-        gainNode.gain.value = 0.1; // Set initial gain to 0.1
-
-        workletNode
-            .connect(gainNode)
-            .connect(audioContext.destination);
-        return workletNode;
-    } catch (e) {
-        console.error("Failed to create ODE node:", e);
-        return null;
-    }
-}
-
-const TWO_PI = Math.PI * 2;
 
 // Example usage
 const defaultConfig = {
@@ -111,9 +52,10 @@ const defaultConfig = {
         y: "TWO_PI*w * x" // dy/dt = w*x
     },
     parameters: {
-        w: 440 // 440 Hz
+        w: 220
     },
-    initialValues: { x: 0, y: 1 }
+    initialValues: { x: 0.5, y: 1.0 },
+    method: 'rk4'
 };
 
 window.addEventListener('load', async() => {
@@ -134,12 +76,12 @@ window.addEventListener('load', async() => {
     gainSlider.id = 'gain';
     gainSlider.min = '0';
     gainSlider.max = '1';
-    gainSlider.step = '0.1';
-    gainSlider.value = '0.1';
+    gainSlider.step = '0.01';
+    gainSlider.value = defaultConfig.gain || '0.8';
 
     const gainValue = document.createElement('span');
     gainValue.id = 'gain-value';
-    gainValue.textContent = '0.1';
+    gainValue.textContent = defaultConfig.gain || '0.8';
 
     gainControl.appendChild(gainLabel);
     gainControl.appendChild(gainSlider);
@@ -178,32 +120,39 @@ window.addEventListener('load', async() => {
     playButton.parentNode.insertBefore(controlBox, playButton.nextSibling);
 
     // Add play button click handler
+    // Play button toggles between playing and pausing  
+    // only create the node if it's not already created
     playButton.addEventListener('click', async() => {
-        if (await initAudio()) {
-            const node = createODENode(defaultConfig);
-            if (node) {
-                // Update gain slider and display
-                gainSlider.addEventListener('input', (e) => {
-                    gainNode.gain.value = e.target.value;
-                    document.getElementById('gain-value').textContent = e.target.value;
-                });
+        if (!audioContext) {
+            if (await initAudio()) {
+                const node = new ODENode(audioContext, defaultConfig);
+                if (node) {
 
-                // Update parameter sliders and displays
-                for (const [name, value] of Object.entries(defaultConfig.parameters)) {
-                    console.log(name, value);
-                    const slider = document.getElementById(name);
-                    slider.addEventListener('input', (e) => {
-                        node.port.postMessage({
-                            type: 'parameterChange',
-                            name: name,
-                            value: parseFloat(e.target.value)
-                        });
-                        document.getElementById(`${name}-value`).textContent = e.target.value;
+                    // Update gain slider and display
+                    gainSlider.addEventListener('input', (e) => {
+                        gainNode.gain.value = e.target.value;
+                        document.getElementById('gain-value').textContent = e.target.value;
                     });
-                }
 
+                    // Update parameter sliders and displays
+                    for (const [name, value] of Object.entries(defaultConfig.parameters)) {
+                        const slider = document.getElementById(name);
+                        slider.addEventListener('input', (e) => {
+                            node.port.postMessage({
+                                type: 'parameterChange',
+                                name: name,
+                                value: parseFloat(e.target.value)
+                            });
+                            document.getElementById(`${name}-value`).textContent = e.target.value;
+                        });
+                    }
+                }
                 audioContext.resume();
             }
+        } else if (audioContext.state === 'suspended') {
+            audioContext.resume();
+        } else if (audioContext.state === 'running') {
+            audioContext.suspend();
         }
     });
 });
