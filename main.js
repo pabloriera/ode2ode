@@ -1,3 +1,5 @@
+let debug = false;
+
 /*
 This website is a playground for playing with ODEs in the browser.
 
@@ -17,20 +19,30 @@ The AudioWorkletNode will output the values of x and y as a stereo audio signal.
 
 */
 
+import {
+    ODENode
+} from './ode.js';
+
+import {
+
+    OdeNodeVisualizer,
+    VisualizationSystem
+} from './visual.js';
+
+import {
+    addPlayPauseButton,
+    createOdeGui
+} from './gui.js';
+
+
 // Create audio context and worklet node
 let audioContext = null;
-let workletNode = null;
-let gainNode = null;
-
-// UI elements
-let playButton;
-let parameterInputs = {};
 
 async function initAudio() {
     if (!audioContext) {
         try {
             audioContext = new AudioContext();
-            await audioContext.audioWorklet.addModule('rk4-generator.js');
+            await audioContext.audioWorklet.addModule('odeint-generator.js');
         } catch (e) {
             console.error("Failed to initialize audio:", e);
             return false;
@@ -39,171 +51,63 @@ async function initAudio() {
     return true;
 }
 
-/* Parse the equations into a string. The variable names must be 
-replaced with an array using the names in initialValues. The parameters must be
-replaced with an object using the names in parameters.
-*/
-function parseEquations(equations, initialValues, parameters) {
-    const varNames = Object.keys(initialValues);
-    const paramNames = Object.keys(parameters);
-    const equationStrings = Object.values(equations);
-
-    let arrayExpr = '[';
-    equationStrings.forEach((eqn, i) => {
-        let expr = eqn;
-        // Replace TWO_PI with actual value
-        expr = expr.replace(/TWO_PI/g, (2 * Math.PI).toString());
-
-        // First replace variables with unique tokens
-        varNames.forEach((name, j) => {
-            expr = expr.replace(new RegExp('\\b' + name + '\\b', 'g'), `__VAR_${j}__`);
-        });
-
-        // Then replace tokens with array indices
-        varNames.forEach((name, j) => {
-            expr = expr.replace(new RegExp(`__VAR_${j}__`, 'g'), `y[${j}]`);
-        });
-
-        // Replace parameter names with array indices
-        paramNames.forEach((name, j) => {
-            expr = expr.replace(new RegExp('\\b' + name + '\\b', 'g'), `p[${j}]`);
-        });
-
-        arrayExpr += expr;
-        if (i < equationStrings.length - 1) arrayExpr += ', ';
-    });
-    arrayExpr += ']';
-
-    return arrayExpr;
-}
-
-function createODENode(config) {
-    const options = {
-        processorOptions: {
-            equationString: parseEquations(config.equations, config.initialValues, config.parameters),
-            initialValues: config.initialValues,
-            parameters: config.parameters
-        },
-        outputChannelCount: [2]
-    };
-
-    try {
-        workletNode = new AudioWorkletNode(audioContext, "rk4-generator", options);
-        gainNode = audioContext.createGain();
-        gainNode.gain.value = 0.1; // Set initial gain to 0.1
-
-        workletNode
-            .connect(gainNode)
-            .connect(audioContext.destination);
-        return workletNode;
-    } catch (e) {
-        console.error("Failed to create ODE node:", e);
-        return null;
+let wabtInstance = null;
+async function initWABT() {
+    if (!wabtInstance) {
+        wabtInstance = await window.WabtModule();
     }
+    return wabtInstance;
 }
-
-const TWO_PI = Math.PI * 2;
 
 // Example usage
-const defaultConfig = {
+const oscillatorConfig = {
+    name: "Oscillator",
     equations: {
         x: "-TWO_PI*w * y", // dx/dt = -w*y
         y: "TWO_PI*w * x" // dy/dt = w*x
     },
     parameters: {
-        w: 440 // 440 Hz
+        w: 220
     },
-    initialValues: { x: 0, y: 1 }
+    initialValues: { x: 0.5, y: 1.0 },
+    method: 'rk4'
 };
 
-window.addEventListener('load', async() => {
-    // Create control box for sliders
-    const controlBox = document.createElement('div');
-    controlBox.className = 'control-box';
+const lorenzConfig = {
+    name: "Lorenz",
+    equations: {
+        x: "sigma * (y - x)",
+        y: "x * (rho - z) - y",
+        z: "x * y - beta * z"
+    },
+    parameters: {
+        sigma: 10,
+        rho: 28,
+        beta: 8 / 3
+    },
+    initialValues: { x: 1, y: 1, z: 1 }
+}
 
-    // Create gain slider
-    const gainControl = document.createElement('div');
-    gainControl.className = 'control';
+// wait for audio context and wabt instance to be initialized
+await initAudio();
+await initWABT();
 
-    const gainLabel = document.createElement('span');
-    gainLabel.className = 'control-label';
-    gainLabel.innerHTML = '<label for="gain">Gain:</label>';
 
-    const gainSlider = document.createElement('input');
-    gainSlider.type = 'range';
-    gainSlider.id = 'gain';
-    gainSlider.min = '0';
-    gainSlider.max = '1';
-    gainSlider.step = '0.1';
-    gainSlider.value = '0.1';
+// Stop audio context from starting automatically
+audioContext.suspend();
 
-    const gainValue = document.createElement('span');
-    gainValue.id = 'gain-value';
-    gainValue.textContent = '0.1';
+let mainguiconfig = {
+    play: false
+};
+addPlayPauseButton(mainguiconfig, audioContext);
 
-    gainControl.appendChild(gainLabel);
-    gainControl.appendChild(gainSlider);
-    gainControl.appendChild(gainValue);
-    controlBox.appendChild(gainControl);
 
-    // Create sliders for parameters
-    for (const [name, value] of Object.entries(defaultConfig.parameters)) {
-        const control = document.createElement('div');
-        control.className = 'control';
+const visSystem = new VisualizationSystem(audioContext);
 
-        const label = document.createElement('span');
-        label.className = 'control-label';
-        label.innerHTML = `<label for="${name}">${name}:</label>`;
-
-        const slider = document.createElement('input');
-        slider.type = 'range';
-        slider.id = name;
-        slider.min = value / 2;
-        slider.max = value * 2;
-        slider.step = value / 100;
-        slider.value = value;
-
-        const valueDisplay = document.createElement('span');
-        valueDisplay.id = `${name}-value`;
-        valueDisplay.textContent = value;
-
-        control.appendChild(label);
-        control.appendChild(slider);
-        control.appendChild(valueDisplay);
-        controlBox.appendChild(control);
-    }
-
-    // Insert control box after play button
-    playButton = document.getElementById('play');
-    playButton.parentNode.insertBefore(controlBox, playButton.nextSibling);
-
-    // Add play button click handler
-    playButton.addEventListener('click', async() => {
-        if (await initAudio()) {
-            const node = createODENode(defaultConfig);
-            if (node) {
-                // Update gain slider and display
-                gainSlider.addEventListener('input', (e) => {
-                    gainNode.gain.value = e.target.value;
-                    document.getElementById('gain-value').textContent = e.target.value;
-                });
-
-                // Update parameter sliders and displays
-                for (const [name, value] of Object.entries(defaultConfig.parameters)) {
-                    console.log(name, value);
-                    const slider = document.getElementById(name);
-                    slider.addEventListener('input', (e) => {
-                        node.port.postMessage({
-                            type: 'parameterChange',
-                            name: name,
-                            value: parseFloat(e.target.value)
-                        });
-                        document.getElementById(`${name}-value`).textContent = e.target.value;
-                    });
-                }
-
-                audioContext.resume();
-            }
-        }
-    });
-});
+const oscillatorNode = new ODENode(audioContext, wabtInstance, oscillatorConfig);
+// const lorenzNode = new ODENode(audioContext, wabtInstance, lorenzConfig);
+// Add ODE nodes to visualize
+visSystem.addOdeNode(oscillatorNode);
+// visSystem.addOdeNode(lorenzNode);
+// Start visualization
+visSystem.startVisualization();
