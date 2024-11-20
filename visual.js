@@ -219,7 +219,7 @@ class VisualizationSystem {
         // Default options
         this.options = {
             backgroundColor: [1.0, 1.0, 1.0, 1.0],
-            gridSize: 200, // Size of each square visualizer in pixels
+            gridSize: 600, // Size of each square visualizer in pixels
             padding: 20, // Padding between visualizers
             ...options
         };
@@ -293,7 +293,7 @@ class VisualizationSystem {
     addOdeNode(odeNode) {
         // Create an analyzer per variable for this node 
         const analysers = [];
-        const numberOfVariables = odeNode.odeNode.numberOfOutputs;
+        const numberOfVariables = odeNode.odeWorkletNode.numberOfOutputs;
 
         for (let i = 0; i < numberOfVariables; i++) {
             const analyser = this.audioContext.createAnalyser();
@@ -308,7 +308,7 @@ class VisualizationSystem {
         console.log('odeNode.numberOfOutputs', odeNode);
 
         for (let i = 0; i < analysers.length; i++) {
-            odeNode.odeNode.connect(analysers[i], i);
+            odeNode.odeWorkletNode.connect(analysers[i], i);
         }
 
         // Create visualizer with its own analyzer

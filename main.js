@@ -73,19 +73,36 @@ const oscillatorConfig = {
     method: 'rk4'
 };
 
+const lorenzConfigx = {
+    name: "Lorenz",
+    equations: {
+        x: "sigma * (y - x)*d",
+        y: "(x * (rho - z) - y)*d",
+        z: "(x * y - beta * z)*d"
+    },
+    parameters: {
+        sigma: 10,
+        rho: 28,
+        beta: 8 / 3,
+        d: 100
+    },
+    initialValues: { x: 0.1, y: 0.1, z: 0.1 }
+}
+
 const lorenzConfig = {
     name: "Lorenz",
     equations: {
-        x: "sigma * (y - x)",
+        x: "sigma * y - sigma * x",
         y: "x * (rho - z) - y",
         z: "x * y - beta * z"
     },
     parameters: {
         sigma: 10,
         rho: 28,
-        beta: 8 / 3
+        beta: 8 / 3,
     },
-    initialValues: { x: 1, y: 1, z: 1 }
+    initialValues: { x: 0.1, y: 0.1, z: 0.1 },
+    timeStepScale: 100
 }
 
 // wait for audio context and wabt instance to be initialized
@@ -104,10 +121,10 @@ addPlayPauseButton(mainguiconfig, audioContext);
 
 const visSystem = new VisualizationSystem(audioContext);
 
-const oscillatorNode = new ODENode(audioContext, wabtInstance, oscillatorConfig);
-// const lorenzNode = new ODENode(audioContext, wabtInstance, lorenzConfig);
+// const oscillatorNode = new ODENode(audioContext, wabtInstance, oscillatorConfig);
+const lorenzNode = new ODENode(audioContext, wabtInstance, lorenzConfig);
 // Add ODE nodes to visualize
-visSystem.addOdeNode(oscillatorNode);
-// visSystem.addOdeNode(lorenzNode);
+// visSystem.addOdeNode(oscillatorNode);
+visSystem.addOdeNode(lorenzNode);
 // Start visualization
 visSystem.startVisualization();
