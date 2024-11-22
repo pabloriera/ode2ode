@@ -73,21 +73,6 @@ const oscillatorConfig = {
     method: 'rk4'
 };
 
-const lorenzConfigx = {
-    name: "Lorenz",
-    equations: {
-        x: "sigma * (y - x)*d",
-        y: "(x * (rho - z) - y)*d",
-        z: "(x * y - beta * z)*d"
-    },
-    parameters: {
-        sigma: 10,
-        rho: 28,
-        beta: 8 / 3,
-        d: 100
-    },
-    initialValues: { x: 0.1, y: 0.1, z: 0.1 }
-}
 
 const lorenzConfig = {
     name: "Lorenz",
@@ -102,8 +87,21 @@ const lorenzConfig = {
         beta: 8 / 3,
     },
     initialValues: { x: 0.1, y: 0.1, z: 0.1 },
-    timeStepScale: 100
+    timeScale: 100
 }
+
+const vanDerPolConfig = {
+    name: "Van der Pol",
+    equations: {
+        x: "y",
+        y: "mu * (1.0 - x*x) * y - x"
+    },
+    parameters: {
+        mu: 1.0 // damping parameter
+    },
+    initialValues: { x: 2.0, y: 0.0 },
+    timeScale: 100 // slowed down to better observe the oscillations
+};
 
 // wait for audio context and wabt instance to be initialized
 await initAudio();
@@ -121,10 +119,15 @@ addPlayPauseButton(mainguiconfig, audioContext);
 
 const visSystem = new VisualizationSystem(audioContext);
 
-// const oscillatorNode = new ODENode(audioContext, wabtInstance, oscillatorConfig);
+const oscillatorNode = new ODENode(audioContext, wabtInstance, oscillatorConfig);
 const lorenzNode = new ODENode(audioContext, wabtInstance, lorenzConfig);
+const vanDerPolNode = new ODENode(audioContext, wabtInstance, vanDerPolConfig);
+
+
 // Add ODE nodes to visualize
-// visSystem.addOdeNode(oscillatorNode);
+visSystem.addOdeNode(oscillatorNode);
 visSystem.addOdeNode(lorenzNode);
+visSystem.addOdeNode(vanDerPolNode);
+
 // Start visualization
 visSystem.startVisualization();

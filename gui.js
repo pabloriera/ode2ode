@@ -26,7 +26,7 @@ function createOdeGui(odeConfig, updateParameters, resetInitialConditions) {
     folder.add(odeConfig, 'gain').min(0).max(1).step(0.01).onChange(updateParameters);
     folder.add(odeConfig, 'resetInitialConditions').onChange(resetInitialConditions);
     //Add detuning
-    folder.add(odeConfig, 'detuning').min(-1).max(100).step(0.1).onChange(updateParameters);
+    folder.add(odeConfig, 'detuning').min(-1).max(2).step(0.001).onChange(updateParameters);
     return folder;
 }
 

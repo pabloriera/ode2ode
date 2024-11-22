@@ -201,7 +201,7 @@ class ODENode {
         this.config.visualizationType = 'oscilloscope';
         this.config.gain = this.initialGain;
         this.config.detuning = 1.0;
-
+        this.config.timeScale = (this.config.timeScale || 1);
         // Add reset and visualization change methods to config for GUI
         this.config.resetInitialConditions = () => this.resetInitialConditions();
         this.config.changeVisualization = () => this.cycleVisualization();
@@ -222,6 +222,7 @@ class ODENode {
                 parameters: this.config.parameters,
                 equations: this.config.equations,
                 method: this.config.method,
+                timeScale: this.config.timeScale
             },
             numberOfInputs: 0,
             numberOfOutputs: Object.keys(this.config.equations).length,

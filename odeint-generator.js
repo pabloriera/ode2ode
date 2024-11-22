@@ -119,6 +119,7 @@ class ODEIntProcessor extends AudioWorkletProcessor {
             if (debug) console.log('Received message:', event.data);
             if (event.data.type === 'updateParameters') {
                 this.parameterValues = new Float64Array(Object.values(event.data.parameters));
+                this.detuning = event.data.detuning;
                 if (debug) console.log('Updated parameters:', Array.from(this.parameterValues).join(', '));
             }
             if (event.data.type === 'resetInitialConditions') {
@@ -128,16 +129,23 @@ class ODEIntProcessor extends AudioWorkletProcessor {
             }
         };
 
+
+
         // Log initialization values
         console.log('Initializing ODEIntProcessor with:', {
             parameters: this.customParameters,
             parameterValues: this.parameterValues,
             y: this.y,
             sampleRate: this.sampleRate,
-            integrationMethod: this.integrationMethod === euler ? 'euler' : 'rk4'
+            integrationMethod: this.integrationMethod === euler ? 'euler' : 'rk4',
+            timeScale: options.processorOptions.timeScale
         });
 
 
+        this.firstTime = true;
+        this.t = 0;
+        this.h = options.processorOptions.timeScale / this.sampleRate;
+        this.detuning = 1;
 
     }
 
@@ -182,9 +190,7 @@ class ODEIntProcessor extends AudioWorkletProcessor {
             console.error('WASM initialization failed:', error);
             this.port.postMessage({ type: 'error', message: error.toString() });
         }
-        this.firstTime = true;
-        this.t = 0;
-        this.h = 1 / this.sampleRate;
+
     }
 
     process(inputs, outputs, parameters) {
@@ -204,7 +210,7 @@ class ODEIntProcessor extends AudioWorkletProcessor {
         }
 
         // Get the current h value based on detuning
-        const h = this.h * (this.detuning || 1.0);
+        const h = this.h * this.detuning;
 
         for (let i = 0; i < outputs[0][0].length; i++) {
             if (debug && this.firstTime) {
