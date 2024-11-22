@@ -20,10 +20,13 @@ function addPlayPauseButton(mainguiconfig, audioContext) {
 function createOdeGui(odeConfig, updateParameters, resetInitialConditions) {
     let folder = gui.addFolder(odeConfig.name);
     for (let parameter in odeConfig.parameters) {
-        folder.add(odeConfig.parameters, parameter).min(0).max(1000).step(0.1).onChange(updateParameters);
+        let value = odeConfig.parameters[parameter];
+        folder.add(odeConfig.parameters, parameter).min(value * 0.25).max(value * 4).step(value * 0.01).onChange(updateParameters);
     }
     folder.add(odeConfig, 'gain').min(0).max(1).step(0.01).onChange(updateParameters);
     folder.add(odeConfig, 'resetInitialConditions').onChange(resetInitialConditions);
+    //Add detuning
+    folder.add(odeConfig, 'detuning').min(-1).max(2).step(0.001).onChange(updateParameters);
     return folder;
 }
 

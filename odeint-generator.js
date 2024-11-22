@@ -59,6 +59,7 @@ class ODEIntProcessor extends AudioWorkletProcessor {
                 // Test the equation 5 times with proper buffer access
                 if (debug) {
                     console.log(Array.from(this.y).join(', '));
+                    console.log(Array.from(this.parameterValues).join(', '));
                     const result = this.equation_fn(0, this.y, this.parameterValues);
                     console.log(Array.from(result).join(', '));
 
@@ -98,9 +99,8 @@ class ODEIntProcessor extends AudioWorkletProcessor {
         // Set integration method (default to RK4)
         this.integrationMethod = options.processorOptions.method === 'euler' ? euler : rungeKutta4;
 
-
         const varNames = Object.keys(options.processorOptions.equations);
-        this.numChannels = varNames.length; // Store number of channels
+        this.numVariables = varNames.length;
 
         // Convert initialValues dictionary to array using equation keys to maintain order
         this.initialValuesArray = varNames.map(varName => {
@@ -113,11 +113,13 @@ class ODEIntProcessor extends AudioWorkletProcessor {
         this.y = new Float64Array(this.initialValuesArray);
 
         this.sampleRate = 44100;
+        this.numChannels = 2;
 
         this.port.onmessage = (event) => {
             if (debug) console.log('Received message:', event.data);
             if (event.data.type === 'updateParameters') {
                 this.parameterValues = new Float64Array(Object.values(event.data.parameters));
+                this.detuning = event.data.detuning;
                 if (debug) console.log('Updated parameters:', Array.from(this.parameterValues).join(', '));
             }
             if (event.data.type === 'resetInitialConditions') {
@@ -127,16 +129,23 @@ class ODEIntProcessor extends AudioWorkletProcessor {
             }
         };
 
+
+
         // Log initialization values
         console.log('Initializing ODEIntProcessor with:', {
             parameters: this.customParameters,
             parameterValues: this.parameterValues,
             y: this.y,
             sampleRate: this.sampleRate,
-            integrationMethod: this.integrationMethod === euler ? 'euler' : 'rk4'
+            integrationMethod: this.integrationMethod === euler ? 'euler' : 'rk4',
+            timeScale: options.processorOptions.timeScale
         });
 
 
+        this.firstTime = true;
+        this.t = 0;
+        this.h = options.processorOptions.timeScale / this.sampleRate;
+        this.detuning = 1;
 
     }
 
@@ -151,8 +160,8 @@ class ODEIntProcessor extends AudioWorkletProcessor {
 
             // Allocate space in WebAssembly memory
             const yOffset = 0;
-            const paramOffset = this.numChannels * 8;
-            const resultOffset = paramOffset + this.numChannels * 8;
+            const paramOffset = this.numVariables * 8;
+            const resultOffset = paramOffset + this.numVariables * 8;
 
             //Wrapper to equation_fn that manage input and output memory seting and reading
             this.equation_fn = (t, y, p) => {
@@ -181,9 +190,7 @@ class ODEIntProcessor extends AudioWorkletProcessor {
             console.error('WASM initialization failed:', error);
             this.port.postMessage({ type: 'error', message: error.toString() });
         }
-        this.firstTime = true;
-        this.t = 0;
-        this.h = 1 / this.sampleRate;
+
     }
 
     process(inputs, outputs, parameters) {
@@ -202,18 +209,19 @@ class ODEIntProcessor extends AudioWorkletProcessor {
             this.reset = false;
         }
 
+        // Get the current h value based on detuning
+        const h = this.h * this.detuning;
+
         for (let i = 0; i < outputs[0][0].length; i++) {
-            //Log first 10 steps of equation only once and only if it's the first time the process is called    
-            if (debug) {
+            if (debug && this.firstTime) {
+                console.log("y:", Array.from(this.y).join(', '));
                 if (i === 10) {
                     this.firstTime = false;
-                    debug = false;
                 }
             }
 
-            this.integrationMethod(this.equation_fn, this.y, this.t, this.h, this.parameterValues);
-            this.t += this.h;
-
+            this.integrationMethod(this.equation_fn, this.y, this.t, h, this.parameterValues);
+            this.t += h;
 
             // Copy each variable to its corresponding channel
             for (let k = 0; k < outputs.length; k++) {
@@ -221,7 +229,6 @@ class ODEIntProcessor extends AudioWorkletProcessor {
                     outputs[k][channel][i] = this.y[k];
                 }
             }
-
         }
 
         return true;

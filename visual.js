@@ -219,8 +219,8 @@ class VisualizationSystem {
         // Default options
         this.options = {
             backgroundColor: [1.0, 1.0, 1.0, 1.0],
-            gridSize: 200, // Size of each square visualizer in pixels
-            padding: 20, // Padding between visualizers
+            gridSize: 300, // Size of each square visualizer in pixels
+            padding: 0, // Padding between visualizers
             ...options
         };
 
@@ -232,32 +232,57 @@ class VisualizationSystem {
         this.visgui = {};
     }
 
-    calculateGridPositions() {
+    updateLayout() {
+        const totalVisualizers = this.visualizers.size;
+
+        // Calculate grid dimensions based on number of visualizers
+        if (totalVisualizers <= 3) {
+            this.gridCols = totalVisualizers;
+            this.gridRows = 1;
+        } else {
+            this.gridCols = Math.ceil(Math.sqrt(totalVisualizers));
+            this.gridRows = Math.ceil(totalVisualizers / this.gridCols);
+        }
+
+        // Calculate size to fit the grid, accounting for padding
+        const availableWidth = this.canvas.width - (this.options.padding * (this.gridCols + 1));
+        const availableHeight = this.canvas.height - (this.options.padding * (this.gridRows + 1));
+
+        // Calculate maximum possible grid size
+        const maxGridWidth = availableWidth / this.gridCols;
+        const maxGridHeight = availableHeight / this.gridRows;
+        this.options.gridSize = Math.min(maxGridWidth, maxGridHeight);
+
+        // Calculate total size including padding
         const totalSize = this.options.gridSize + this.options.padding;
-        const cols = Math.floor(this.canvas.width / totalSize);
-        const rows = Math.floor(this.canvas.height / totalSize);
 
-        const startX = (this.canvas.width - (cols * totalSize)) / 2;
-        const startY = (this.canvas.height - (rows * totalSize)) / 2;
+        // Center the entire grid
+        const startX = (this.canvas.width - (this.gridCols * totalSize)) / 2;
+        const startY = (this.canvas.height - (this.gridRows * totalSize)) / 2;
 
-        return { cols, rows, startX, startY, totalSize };
-    }
+        console.log('Grid Layout Debug:');
+        console.log(`Total visualizers: ${totalVisualizers}`);
+        console.log(`Grid: ${this.gridRows} rows × ${this.gridCols} columns`);
+        console.log(`Canvas size: ${this.canvas.width}×${this.canvas.height}`);
+        console.log(`Grid size: ${this.options.gridSize}`);
+        console.log(`Start position: (${startX}, ${startY})`);
+        console.log(`Total size per cell: ${totalSize}`);
 
-    updateViewports() {
-        const { startX, startY, totalSize } = this.calculateGridPositions();
+        // Update each visualizer's viewport
         let index = 0;
-
-        for (const visualizer of this.visualizers.values()) {
+        for (const [odeNode, visualizer] of this.visualizers.entries()) {
             const row = Math.floor(index / this.gridCols);
             const col = index % this.gridCols;
 
             const x = startX + (col * totalSize);
             const y = startY + (row * totalSize);
 
-            // Convert pixel coordinates to WebGL coordinates (-1 to 1)
-            const normalizedX = (x / this.canvas.width) * 2 - 1;
-            const normalizedY = 1 - (y / this.canvas.height) * 2;
-            const normalizedSize = this.options.gridSize / Math.min(this.canvas.width, this.canvas.height) * 2;
+            console.log(`Node ${index} (${odeNode.config.name}):`, {
+                row,
+                col,
+                position: `(${x}, ${y})`,
+                size: `${this.options.gridSize}×${this.options.gridSize}`
+            });
 
             visualizer.setViewport(
                 x,
@@ -266,20 +291,8 @@ class VisualizationSystem {
                 this.options.gridSize
             );
 
-
             index++;
         }
-    }
-
-    updateGridLayout() {
-
-        // Calculate grid dimensions
-        const totalVisualizers = this.visualizers.size;
-        this.gridCols = Math.ceil(Math.sqrt(totalVisualizers));
-        this.gridRows = Math.ceil(totalVisualizers / this.gridCols);
-
-        // Update viewport for each visualizer
-        this.updateViewports();
     }
 
     setSize(visualizer, size) {
@@ -293,7 +306,7 @@ class VisualizationSystem {
     addOdeNode(odeNode) {
         // Create an analyzer per variable for this node 
         const analysers = [];
-        const numberOfVariables = odeNode.odeNode.numberOfOutputs;
+        const numberOfVariables = odeNode.odeWorkletNode.numberOfOutputs;
 
         for (let i = 0; i < numberOfVariables; i++) {
             const analyser = this.audioContext.createAnalyser();
@@ -308,7 +321,7 @@ class VisualizationSystem {
         console.log('odeNode.numberOfOutputs', odeNode);
 
         for (let i = 0; i < analysers.length; i++) {
-            odeNode.odeNode.connect(analysers[i], i);
+            odeNode.odeWorkletNode.connect(analysers[i], i);
         }
 
         // Create visualizer with its own analyzer
@@ -322,9 +335,9 @@ class VisualizationSystem {
             .name('Visualization').onChange((type) => this.setVisualizationType(visualizer, type));
 
         //add size slider 
-        folder.add(this.visgui[odeNode.config.name], 'size', 0.1, 2, 0.1).name('Size').onChange((size) => this.setSize(visualizer, size));
+        folder.add(this.visgui[odeNode.config.name], 'size', 0.01, 2, 0.01).name('Size').onChange((size) => this.setSize(visualizer, size));
 
-        this.updateGridLayout();
+        this.updateLayout();
 
         return visualizer;
     }
@@ -333,7 +346,7 @@ class VisualizationSystem {
         const visualizer = this.visualizers.get(odeNode);
         if (visualizer) {
             this.visualizers.delete(odeNode);
-            this.updateGridLayout();
+            this.updateLayout();
         }
     }
 
