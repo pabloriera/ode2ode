@@ -30,4 +30,15 @@ function createOdeGui(odeConfig, updateParameters, resetInitialConditions) {
     return folder;
 }
 
-export { createOdeGui, addPlayPauseButton };
+function addMainVolumeControl(mainguiconfig, audioMixer) {
+    let mainFolder = gui.addFolder('Main');
+    mainFolder.add(mainguiconfig, 'mainVolume', 0, 1, 0.01)
+        .name('Main Volume')
+        .onChange(() => {
+            audioMixer.setMainVolume(mainguiconfig.mainVolume);
+        });
+
+    return mainFolder;
+}
+
+export { createOdeGui, addPlayPauseButton, addMainVolumeControl };

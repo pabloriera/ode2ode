@@ -266,9 +266,8 @@ class ODENode {
         this.gainNode = audioContext.createGain();
         this.gainNode.gain.value = this.config.gain;
 
-        // Connect audio chain
+        // Connect to worklet node only
         this.odeWorkletNode.connect(this.gainNode);
-        this.gainNode.connect(audioContext.destination);
 
         if (debug) console.log('Audio chain connected:', {
             odeWorkletNode: this.odeWorkletNode,

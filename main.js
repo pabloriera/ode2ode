@@ -31,17 +31,23 @@ import {
 
 import {
     addPlayPauseButton,
-    createOdeGui
+    createOdeGui,
+    addMainVolumeControl
 } from './gui.js';
 
+import {
+    AudioMixer
+} from './audio.js';
 
-// Create audio context and worklet node
+// Create audio context, mixer and worklet node
 let audioContext = null;
+let audioMixer = null;
 
 async function initAudio() {
     if (!audioContext) {
         try {
             audioContext = new AudioContext();
+            audioMixer = new AudioMixer(audioContext);
             await audioContext.audioWorklet.addModule('odeint-generator.js');
         } catch (e) {
             console.error("Failed to initialize audio:", e);
@@ -100,7 +106,7 @@ const vanDerPolConfig = {
         mu: 1.0 // damping parameter
     },
     initialValues: { x: 2.0, y: 0.0 },
-    timeScale: 100 // slowed down to better observe the oscillations
+    timeScale: 500 // slowed down to better observe the oscillations
 };
 
 // wait for audio context and wabt instance to be initialized
@@ -112,17 +118,22 @@ await initWABT();
 audioContext.suspend();
 
 let mainguiconfig = {
-    play: false
+    play: false,
+    mainVolume: 0.5 // Default main volume
 };
 addPlayPauseButton(mainguiconfig, audioContext);
-
+addMainVolumeControl(mainguiconfig, audioMixer);
 
 const visSystem = new VisualizationSystem(audioContext);
 
 const oscillatorNode = new ODENode(audioContext, wabtInstance, oscillatorConfig);
-const lorenzNode = new ODENode(audioContext, wabtInstance, lorenzConfig);
-const vanDerPolNode = new ODENode(audioContext, wabtInstance, vanDerPolConfig);
+audioMixer.addNode('oscillator', oscillatorNode.gainNode);
 
+const lorenzNode = new ODENode(audioContext, wabtInstance, lorenzConfig);
+audioMixer.addNode('lorenz', lorenzNode.gainNode);
+
+const vanDerPolNode = new ODENode(audioContext, wabtInstance, vanDerPolConfig);
+audioMixer.addNode('vanderpol', vanDerPolNode.gainNode);
 
 // Add ODE nodes to visualize
 visSystem.addOdeNode(oscillatorNode);
