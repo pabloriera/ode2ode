@@ -1,8 +1,5 @@
 let debug = true;
 let wabtInstance = null;
-
-
-
 // Constants
 const TWO_PI = Math.PI * 2;
 
@@ -23,6 +20,9 @@ function parseEquations(equations, initialValues, parameters) {
     const varNames = Object.keys(initialValues);
     const paramNames = Object.keys(parameters);
     const equationStrings = Object.values(equations);
+    if (debug) console.log("Equation strings:", equationStrings);
+    if (debug) console.log("Var names:", varNames);
+    if (debug) console.log("Param names:", paramNames);
 
     return equationStrings.map(eqn => {
         let expr = eqn;
@@ -48,81 +48,6 @@ function parseEquations(equations, initialValues, parameters) {
     });
 }
 
-
-// function parseExpression(expr) {
-
-//     if (debug) {
-//         console.log("Parsing expression:", expr);
-//     }
-//     const stack = [];
-
-//     // Split on operators but keep array access intact
-//     const parts = expr.split(/([+\-*/()]|\s+)/g)
-//         .filter(p => p.trim());
-
-//     if (debug) console.log("Parts:", parts);
-
-//     // First pass: handle unary minus and convert values
-//     const tokens = [];
-//     for (let i = 0; i < parts.length; i++) {
-//         const part = parts[i];
-//         if (part === '-' && (i === 0 || parts[i - 1] === '*' || parts[i - 1] === '/')) {
-//             // Unary minus
-//             const nextPart = parts[++i];
-//             if (!isNaN(nextPart)) {
-//                 tokens.push(`(f64.const ${-parseFloat(nextPart)})`);
-//             } else if (nextPart.includes('[')) {
-//                 const [array, index] = nextPart.split('[');
-//                 const offset = parseInt(index) * 8;
-//                 const value = array === 'y' ?
-//                     `(f64.load (i32.add (local.get $y) (i32.const ${offset})))` :
-//                     `(f64.load (i32.add (local.get $p) (i32.const ${offset})))`;
-//                 tokens.push(`(f64.neg ${value})`);
-//             }
-//         } else if (!isNaN(part)) {
-//             tokens.push(`(f64.const ${parseFloat(part)})`);
-//         } else if (part.includes('[')) {
-//             const [array, index] = part.split('[');
-//             const offset = parseInt(index) * 8;
-//             tokens.push(array === 'y' ?
-//                 `(f64.load (i32.add (local.get $y) (i32.const ${offset})))` :
-//                 `(f64.load (i32.add (local.get $p) (i32.const ${offset})))`
-//             );
-//         } else if (part === '*' || part === '/') {
-//             tokens.push(part);
-//         }
-//     }
-
-//     if (debug) {
-//         console.log("Tokens after first pass:", tokens);
-//     }
-
-//     // Second pass: handle multiplication and division
-//     for (let i = 0; i < tokens.length; i++) {
-//         const token = tokens[i];
-//         if (token === '*' || token === '/') {
-//             const left = stack.pop();
-//             const right = tokens[i + 1];
-//             if (!left || !right) {
-//                 throw new Error(`Invalid expression: missing operand for ${token}`);
-//             }
-//             const op = token === '*' ? 'f64.mul' : 'f64.div';
-//             stack.push(`(${op} ${left} ${right})`);
-//             i++; // Skip the next token since we've used it
-//         } else {
-//             stack.push(token);
-//         }
-//     }
-
-//     if (stack.length !== 1) {
-//         console.log("Final stack:", stack);
-//         throw new Error('Invalid expression: unbalanced stack');
-//     }
-
-//     const result = stack[0];
-//     console.log("Final expression:", result);
-//     return result;
-// }
 
 
 // Initialize WABT synchronously
@@ -156,21 +81,8 @@ function compileEquation(wabtInstance, equations, initialValues, parameters) {
         console.log("Parsed equations:", parsedEqns);
     }
 
-    // const watSource = `
-    // (module
-    //     (memory (export "memory") 1)
-    //     (func (export "evaluate") (param $t f64) (param $y i32) (param $p i32) (param $result i32)
-    //         ;; Store results
-    //         ${parsedEqns.map((eq, i) => `
-    //             (f64.store
-    //                 (i32.add (local.get $result) (i32.const ${i * 8}))
-    //                 ${parseExpression(eq)}
-    //             )
-    //         `).join('\n')}
-    //     )
-    // )`;
-
     const watSource = generateWATModule(parsedEqns);
+
 
     if (debug) console.log("Generated WAT source:", watSource);
 
@@ -185,6 +97,8 @@ function compileEquation(wabtInstance, equations, initialValues, parameters) {
     }
 }
 
+import { Parameter } from './audio.js';
+
 // Create GUI
 import { createOdeGui } from './gui.js';
 
@@ -193,8 +107,6 @@ class ODENode {
         this.config = config;
         this.audioContext = audioContext;
 
-        // Store initial parameter values for reset
-        this.initialParameters = {...config.parameters };
         this.initialGain = 0.1;
 
         // Add visualization type and detuning to config
@@ -202,11 +114,16 @@ class ODENode {
         this.config.gain = this.initialGain;
         this.config.detuning = 1.0;
         this.config.timeScale = (this.config.timeScale || 1);
+
         // Add reset and visualization change methods to config for GUI
         this.config.resetInitialConditions = () => this.resetInitialConditions();
         this.config.changeVisualization = () => this.cycleVisualization();
 
-        // block until the compileEquation function returns the wasm bytes
+        // Prepare parameter values for WASM compilation
+        this.config.paramValues = Object.values(config.parameters).map(p =>
+            Array.isArray(p) ? p[0] : p
+        );
+
         const wasmBytes = compileEquation(
             wabtInstance,
             config.equations,
@@ -214,23 +131,41 @@ class ODENode {
             config.parameters
         );
 
-        // Initialize base AudioWorkletNode         
+        // Create parameter nodes
+        this.parameterNodes = new Map();
+        Object.entries(config.parameters).forEach(([name, value], index) => {
+            const param = new Parameter(audioContext, value[0]);
+            this.parameterNodes.set(name, param);
+        });
+
+        // Initialize worklet node with inputs for parameters
         this.odeWorkletNode = new AudioWorkletNode(audioContext, "odeint-generator", {
             processorOptions: {
                 wasmBytes: wasmBytes,
                 initialValues: this.config.initialValues,
-                parameters: this.config.parameters,
+                parameters: this.config.paramValues,
                 equations: this.config.equations,
                 method: this.config.method,
                 timeScale: this.config.timeScale
             },
-            numberOfInputs: 0,
+            numberOfInputs: Object.keys(this.config.parameters).length,
             numberOfOutputs: Object.keys(this.config.equations).length,
             outputChannelCount: Array(Object.keys(this.config.equations).length).fill(2)
         });
 
+        // Connect parameter nodes to worklet inputs
+        Array.from(this.parameterNodes.values()).forEach((param, index) => {
+            param.connect(this.odeWorkletNode, index);
+        });
+
         if (debug) console.log('Initializing ODENode', this.odeWorkletNode);
         this.init(audioContext);
+
+        // Create a copy of the parameters for the GUI
+        this.config.gui_parameters = {};
+        for (const [name, value] of Object.entries(this.config.parameters)) {
+            this.config.gui_parameters[name] = Array.isArray(value) ? value[0] : value;
+        }
 
         // Create GUI with all callback functions
         this.gui = createOdeGui(
@@ -241,11 +176,19 @@ class ODENode {
     }
 
     updateParameters = () => {
+        // Update parameter node values instead of sending message
+        for (const [name, value] of Object.entries(this.config.gui_parameters)) {
+            const param = this.parameterNodes.get(name);
+            if (param) {
+                param.setValue(value);
+            }
+        }
+
         this.odeWorkletNode.port.postMessage({
             type: 'updateParameters',
-            parameters: this.config.parameters,
             detuning: this.config.detuning
         });
+
         this.gainNode.gain.value = this.config.gain;
     }
 
@@ -280,7 +223,6 @@ class ODENode {
 
 export {
     parseEquations,
-    // parseExpression,
     compileEquation,
     ODENode
 

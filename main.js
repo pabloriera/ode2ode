@@ -31,23 +31,20 @@ import {
 
 import {
     addPlayPauseButton,
-    createOdeGui,
-    addMainVolumeControl
+    addMainVolumeControl,
+    removeFolder
 } from './gui.js';
 
 import {
     AudioMixer
 } from './audio.js';
 
-// Create audio context, mixer and worklet node
-let audioContext = null;
-let audioMixer = null;
-
 async function initAudio() {
     if (!audioContext) {
         try {
             audioContext = new AudioContext();
             audioMixer = new AudioMixer(audioContext);
+            await audioContext.audioWorklet.addModule('parameter-generator.js');
             await audioContext.audioWorklet.addModule('odeint-generator.js');
         } catch (e) {
             console.error("Failed to initialize audio:", e);
@@ -65,80 +62,86 @@ async function initWABT() {
     return wabtInstance;
 }
 
-// Example usage
-const oscillatorConfig = {
-    name: "Oscillator",
-    equations: {
-        x: "-TWO_PI*w * y", // dx/dt = -w*y
-        y: "TWO_PI*w * x" // dy/dt = w*x
-    },
-    parameters: {
-        w: 220
-    },
-    initialValues: { x: 0.5, y: 1.0 },
-    method: 'rk4'
-};
+// Replace the hardcoded configs section with a nodes management system
+let odeNodes = new Map(); // Store active ODE nodes
 
+// Initialize basic audio and visualization systems
+let audioContext = null;
+let audioMixer = null;
+let visSystem = null;
 
-const lorenzConfig = {
-    name: "Lorenz",
-    equations: {
-        x: "sigma * y - sigma * x",
-        y: "x * (rho - z) - y",
-        z: "x * y - beta * z"
-    },
-    parameters: {
-        sigma: 10,
-        rho: 28,
-        beta: 8 / 3,
-    },
-    initialValues: { x: 0.1, y: 0.1, z: 0.1 },
-    timeScale: 100
+async function initSystems() {
+    await initAudio();
+    await initWABT();
+
+    audioContext.suspend();
+
+    let mainguiconfig = {
+        play: false,
+        mainVolume: 0.5
+    };
+
+    addPlayPauseButton(mainguiconfig, audioContext);
+    addMainVolumeControl(mainguiconfig, audioMixer);
+
+    visSystem = new VisualizationSystem(audioContext);
+    visSystem.startVisualization();
 }
 
-const vanDerPolConfig = {
-    name: "Van der Pol",
-    equations: {
-        x: "y",
-        y: "mu * (1.0 - x*x) * y - x"
+function addOdeNode(config) {
+    // Remove existing node with same name if it exists
+    if (odeNodes.has(config.name)) {
+        const oldNode = odeNodes.get(config.name);
+        // Remove GUI folder
+        // gui.removeFolder(oldNode.gui);
+        removeFolder(oldNode.gui);
+        // Remove from audio and visualization
+        audioMixer.removeNode(config.name);
+        visSystem.removeOdeNode(oldNode);
+        odeNodes.delete(config.name);
+    }
+
+    // Create new node
+    const node = new ODENode(audioContext, wabtInstance, config);
+    audioMixer.addNode(config.name, node.gainNode);
+    visSystem.addOdeNode(node);
+    odeNodes.set(config.name, node);
+}
+
+// Add event listener for ctrl+click on textarea
+document.addEventListener('DOMContentLoaded', () => {
+    const editor = document.getElementById('ode-config-editor');
+
+    editor.addEventListener('keydown', (event) => {
+        if (event.ctrlKey && event.key === 'Enter') {
+            try {
+                const configText = editor.value;
+                const config = JSON.parse(configText);
+                addOdeNode(config);
+            } catch (error) {
+                console.error('Failed to parse ODE configuration:', error);
+            }
+        }
+    });
+
+    // Initialize systems
+    initSystems();
+});
+
+// Example configuration to show in textarea:
+const exampleConfig = `{
+    "name": "Hopf",
+    "equations": {
+        "x": "TWO_PI*w * y + (g - b*(x*x + y*y))*x",
+        "y": "-TWO_PI*w * x + (g - b*(x*x + y*y))*y"
     },
-    parameters: {
-        mu: 1.0 // damping parameter
+    "parameters": {
+        "w": [440.0, 0.0, 6080.0],
+        "g": [1.0, -4.0, 4.0],
+        "b": [10.0, 0.0, 30.0]
     },
-    initialValues: { x: 2.0, y: 0.0 },
-    timeScale: 500 // slowed down to better observe the oscillations
-};
+    "initialValues": { "x": 0.5, "y": 1.0 },
+    "integrationMethod": "rk4"
+}`;
 
-// wait for audio context and wabt instance to be initialized
-await initAudio();
-await initWABT();
-
-
-// Stop audio context from starting automatically
-audioContext.suspend();
-
-let mainguiconfig = {
-    play: false,
-    mainVolume: 0.5 // Default main volume
-};
-addPlayPauseButton(mainguiconfig, audioContext);
-addMainVolumeControl(mainguiconfig, audioMixer);
-
-const visSystem = new VisualizationSystem(audioContext);
-
-const oscillatorNode = new ODENode(audioContext, wabtInstance, oscillatorConfig);
-audioMixer.addNode('oscillator', oscillatorNode.gainNode);
-
-const lorenzNode = new ODENode(audioContext, wabtInstance, lorenzConfig);
-audioMixer.addNode('lorenz', lorenzNode.gainNode);
-
-const vanDerPolNode = new ODENode(audioContext, wabtInstance, vanDerPolConfig);
-audioMixer.addNode('vanderpol', vanDerPolNode.gainNode);
-
-// Add ODE nodes to visualize
-visSystem.addOdeNode(oscillatorNode);
-visSystem.addOdeNode(lorenzNode);
-visSystem.addOdeNode(vanDerPolNode);
-
-// Start visualization
-visSystem.startVisualization();
+document.getElementById('ode-config-editor').value = exampleConfig;

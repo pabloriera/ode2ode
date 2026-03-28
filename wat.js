@@ -4,7 +4,8 @@ function generateWATModule(expressions) {
     const watModuleParts = [
         `(module
     (memory (export "memory") 1)
-    (func (export "evaluate") (param $t f64) (param $y i32) (param $p i32) (param $result i32)`
+    (func (export "evaluate") (param $t f64) (param $y i32) (param $p i32) (param $result i32)
+        (local $offset i32)  ;; Add local variable for offset tracking`
     ];
 
     let offset = 0;
@@ -49,17 +50,18 @@ function tokenize(expression) {
         } else if (char === '(' || char === ')') {
             tokens.push({ type: 'PAREN', value: char });
             index++;
-        } else if (char === '-' && /[0-9.]/.test(expression[index + 1])) {
-            // Handle negative numbers
-            let number = char;
-            index++;
-            while (/[0-9.eE]/.test(expression[index])) {
-                number += expression[index++];
+        } else if (char === '-') {
+            // Check if it's a unary minus
+            if (index === 0 || tokens[tokens.length - 1]?.type === 'OPERATOR' ||
+                tokens[tokens.length - 1]?.value === '(') {
+                tokens.push({ type: 'OPERATOR', value: 'u-' }); // Mark as unary minus
+            } else {
+                tokens.push({ type: 'OPERATOR', value: '-' }); // Binary minus
             }
-            tokens.push({ type: 'NUMBER', value: number });
+            index++;
         } else if (/[0-9.]/.test(char)) {
             let number = '';
-            while (/[0-9.eE]/.test(expression[index])) {
+            while (index < length && /[0-9.eE]/.test(expression[index])) {
                 number += expression[index++];
             }
             tokens.push({ type: 'NUMBER', value: number });
@@ -68,22 +70,9 @@ function tokenize(expression) {
             index++;
         } else if (/[a-zA-Z_]/.test(char)) {
             let identifier = '';
-            // Read the base identifier
-            while (index < length && /[a-zA-Z0-9_]/.test(expression[index])) {
+            while (index < length && /[a-zA-Z0-9_\[\]]/.test(expression[index])) {
                 identifier += expression[index++];
             }
-
-            // Check for array access
-            if (index < length && expression[index] === '[') {
-                identifier += expression[index++]; // add '['
-                while (index < length && expression[index] !== ']') {
-                    identifier += expression[index++];
-                }
-                if (index < length && expression[index] === ']') {
-                    identifier += expression[index++]; // add ']'
-                }
-            }
-
             tokens.push({ type: 'IDENTIFIER', value: identifier });
         } else {
             throw new Error(`Unrecognized character at index ${index}: ${char}`);

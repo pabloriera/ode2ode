@@ -51,6 +51,44 @@ class ODEIntProcessor extends AudioWorkletProcessor {
     constructor(options) {
         super();
 
+        console.log("options.processorOptions:", options.processorOptions);
+
+        this.initialized = false;
+        // Initialize basic properties
+        this.customParameters = options.processorOptions.parameters || {};
+        this.parameterValues = new Float64Array(Object.values(this.customParameters));
+
+        // Set integration method (default to RK4)
+        this.integrationMethod = options.processorOptions.method === 'euler' ? euler : rungeKutta4;
+
+        const varNames = Object.keys(options.processorOptions.equations);
+        this.numVariables = varNames.length;
+
+        // Convert initialValues dictionary to array using equation keys to maintain order
+        this.initialValuesArray = varNames.map(varName => {
+            const value = Number(options.processorOptions.initialValues[varName]);
+            if (isNaN(value)) {
+                throw new Error(`Invalid initial value for ${varName}: ${initialValues[varName]}`);
+            }
+            return value;
+        });
+        this.y = new Float64Array(this.initialValuesArray);
+
+        this.sampleRate = 44100;
+        this.numChannels = 2;
+
+        this.port.onmessage = (event) => {
+            if (debug) console.log('Received message:', event.data);
+            if (event.data.type === 'updateParameters') {
+                this.detuning = event.data.detuning;
+            }
+            if (event.data.type === 'resetInitialConditions') {
+                if (debug) console.log('Reset initial conditions:', Array.from(event.data.initialValues).join(', '));
+                this.reset = true;
+
+            }
+        };
+
         // Initialize WebAssembly
         (async() => {
             try {
@@ -88,48 +126,6 @@ class ODEIntProcessor extends AudioWorkletProcessor {
                 });
             }
         })();
-
-        console.log(options.processorOptions);
-
-        this.initialized = false;
-        // Initialize basic properties
-        this.customParameters = options.processorOptions.parameters || {};
-        this.parameterValues = new Float64Array(Object.values(this.customParameters));
-
-        // Set integration method (default to RK4)
-        this.integrationMethod = options.processorOptions.method === 'euler' ? euler : rungeKutta4;
-
-        const varNames = Object.keys(options.processorOptions.equations);
-        this.numVariables = varNames.length;
-
-        // Convert initialValues dictionary to array using equation keys to maintain order
-        this.initialValuesArray = varNames.map(varName => {
-            const value = Number(options.processorOptions.initialValues[varName]);
-            if (isNaN(value)) {
-                throw new Error(`Invalid initial value for ${varName}: ${initialValues[varName]}`);
-            }
-            return value;
-        });
-        this.y = new Float64Array(this.initialValuesArray);
-
-        this.sampleRate = 44100;
-        this.numChannels = 2;
-
-        this.port.onmessage = (event) => {
-            if (debug) console.log('Received message:', event.data);
-            if (event.data.type === 'updateParameters') {
-                this.parameterValues = new Float64Array(Object.values(event.data.parameters));
-                this.detuning = event.data.detuning;
-                if (debug) console.log('Updated parameters:', Array.from(this.parameterValues).join(', '));
-            }
-            if (event.data.type === 'resetInitialConditions') {
-                if (debug) console.log('Reset initial conditions:', Array.from(event.data.initialValues).join(', '));
-                this.reset = true;
-
-            }
-        };
-
-
 
         // Log initialization values
         console.log('Initializing ODEIntProcessor with:', {
@@ -208,6 +204,14 @@ class ODEIntProcessor extends AudioWorkletProcessor {
             this.y = new Float64Array(this.initialValuesArray);
             this.reset = false;
         }
+
+        for (let i = 0; i < inputs.length; i++) {
+            if (inputs[i] && inputs[i][0]) {
+                // Take the first sample of each input for this block
+                this.parameterValues[i] = inputs[i][0][0];
+            }
+        }
+
 
         // Get the current h value based on detuning
         const h = this.h * this.detuning;

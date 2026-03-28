@@ -67,4 +67,34 @@ class AudioMixer {
     }
 }
 
-export { AudioMixer };
+class Parameter {
+    constructor(audioContext, paramConfig) {
+        this.audioContext = audioContext;
+        this.value = Array.isArray(paramConfig) ? paramConfig[0] : paramConfig;
+
+        this.parameterNode = new AudioWorkletNode(audioContext, 'parameter-generator', {
+            processorOptions: {
+                value: this.value,
+                downsampleFactor: 100
+            }
+        });
+    }
+
+    setValue(value) {
+        this.value = value;
+        this.parameterNode.port.postMessage({
+            type: 'setValue',
+            value: value
+        });
+    }
+
+    connect(destination, index) {
+        this.parameterNode.connect(destination, 0, index);
+    }
+
+    disconnect() {
+        this.parameterNode.disconnect();
+    }
+}
+
+export { AudioMixer, Parameter };
