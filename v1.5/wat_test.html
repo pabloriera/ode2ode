@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WAT.js Test Suite</title>
+    <style>
+        .test-result {
+            margin: 10px;
+            padding: 10px;
+            border: 1px solid #ccc;
+        }
+        .pass { background-color: #dfd; }
+        .fail { background-color: #fdd; }
+        
+        #wat-test-area {
+            margin: 20px;
+            padding: 20px;
+            border: 1px solid #888;
+            background: #f8f8f8;
+        }
+        
+        #wat-source {
+            width: 100%;
+            height: 200px;
+            font-family: monospace;
+            margin-bottom: 10px;
+        }
+        
+        #wat-test-result {
+            font-family: monospace;
+            white-space: pre-wrap;
+            background: #fff;
+            padding: 10px;
+            border: 1px solid #ccc;
+        }
+    </style>
+</head>
+<body>
+    <h1>WAT.js Test Suite</h1>
+    
+    <div id="wat-test-area">
+        <h2>Direct WAT Test</h2>
+        <textarea id="wat-source" placeholder="Enter WAT source code here...">
+(module
+    (memory (export "memory") 1)
+    (func (export "evaluate") (param $t f64) (param $y i32) (param $p i32) (param $result i32)
+        (local $temp f64)
+        ;; Load y[0] into temp
+        (local.set $temp 
+            (f64.load (local.get $y))
+        )
+        ;; Store temp * 2 into result
+        (f64.store
+            (local.get $result)
+            (f64.mul 
+                (local.get $temp)
+                (f64.const 2.0)
+            )
+        )
+    )
+)</textarea>
+        <div>
+            <label>t: <input type="number" id="t-value" value="1.0" step="0.1"></label>
+            <label>y: <input type="text" id="y-values" value="1.0,2.0"></label>
+            <label>p: <input type="text" id="p-values" value="3.0,4.0"></label>
+        </div>
+        <button onclick="testWAT()">Test WAT</button>
+        <div id="wat-test-result"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/wabt@1.0.32/index.js"></script>
+    <script type="module">
+        
+        let wabtInstance = null;
+        
+        async function initWABT() {
+            if (!wabtInstance) {
+                wabtInstance = await WabtModule();
+            }
+            return wabtInstance;
+        }
+
+        window.testWAT = async function() {
+            const watSource = document.getElementById('wat-source').value;
+            const t = parseFloat(document.getElementById('t-value').value);
+            const y = document.getElementById('y-values').value.split(',').map(Number);
+            const p = document.getElementById('p-values').value.split(',').map(Number);
+            const resultDiv = document.getElementById('wat-test-result');
+
+            try {
+                const wabt = await initWABT();
+                const module = wabt.parseWat("test.wat", watSource);
+                const { buffer } = module.toBinary({ write_debug_names: true });
+
+                const { instance } = await WebAssembly.instantiate(buffer, {
+                });
+
+                const memory = instance.exports.memory;
+
+                // Calculate offsets using the same logic as in odeint-generator.js
+                const yOffset = 0;
+                const pOffset = y.length * 8;
+                const resultOffset = pOffset + p.length * 8;
+
+
+                // Set up memory
+                const memoryF64 = new Float64Array(memory.buffer);
+                memoryF64.set(y, yOffset / 8);
+                memoryF64.set(p, pOffset / 8);
+                //set result to 99
+                memoryF64[resultOffset / 8] = 99;
+                // Execute and get results
+                instance.exports.evaluate(t, yOffset, pOffset, resultOffset);
+
+                // Format output
+                resultDiv.innerHTML = `Memory State:
+y values: [${Array.from(memoryF64.slice(0, y.length)).join(', ')}]
+p values: [${Array.from(memoryF64.slice(pOffset/8, pOffset/8 + p.length)).join(', ')}]
+
+Parameters:
+t: ${t}
+yOffset: ${yOffset}
+pOffset: ${pOffset}
+resultOffset: ${resultOffset}
+
+Result: ${memoryF64[resultOffset/8]}`;
+
+            } catch (error) {
+                resultDiv.innerHTML = `Error: ${error.message}`;
+                console.error(error);
+            }
+        };
+    </script>
+</body>
+</html> 

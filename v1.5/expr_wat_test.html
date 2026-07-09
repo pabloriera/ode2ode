@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>WAT.js Test Suite</title>
+    <style>
+      .test-result {
+        margin: 10px;
+        padding: 10px;
+        border: 1px solid #ccc;
+      }
+      .pass {
+        background-color: #dfd;
+      }
+      .fail {
+        background-color: #fdd;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>WAT.js Test Suite</h1>
+    <div id="results"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/wabt@1.0.32/index.js"></script>
+    <script type="module">
+      import { generateWATModule } from "./wat.js";
+
+      // Initialize wabt
+      let wabt;
+      async function initWabt() {
+        if (!wabt) {
+          wabt = await WabtModule();
+        }
+      }
+
+      // Test helper function to evaluate expression in JavaScript
+      function evaluateJS(expr, t, y, p) {
+        expr = expr.replace(/y\[(\d+)\]/g, (_, i) => y[i]);
+        expr = expr.replace(/p\[(\d+)\]/g, (_, i) => p[i]);
+        expr = expr.replace(/t/g, t);
+        return eval(expr);
+      }
+
+      async function runTest(expressions, t = 1.0, y = [1.0, 2.0], p = [3.0, 4.0, 5.0]) {
+        const results = document.getElementById("results");
+        const testDiv = document.createElement("div");
+        testDiv.className = "test-result";
+
+        try {
+          await initWabt();
+          
+          // Split expressions into array if it's a comma-separated string
+          const exprsArray = typeof expressions === 'string' ? 
+            expressions.split(',').map(e => e.trim()) : 
+            [expressions];
+
+          // Generate WAT module
+          const watSource = generateWATModule(exprsArray);
+          console.log("WAT Source:", watSource);
+
+          // Convert WAT to WASM using wabt
+          const wasmModule = wabt
+            .parseWat("test.wat", watSource)
+            .toBinary({ write_debug_names: true });
+
+          // Create memory
+
+          // Instantiate WASM module with memory
+          const { instance } = await WebAssembly.instantiate(wasmModule.buffer, {
+          });
+
+          const memory = instance.exports.memory;
+          // Create memory views
+          const memoryF64 = new Float64Array(memory.buffer);
+          
+          // Calculate offsets - each result needs its own space
+          const yOffset = 0;
+          const pOffset = y.length * 8;
+          const resultOffset = pOffset + p.length * 8;
+
+          // Copy input arrays to memory
+          memoryF64.set(y, yOffset / 8);
+          memoryF64.set(p, pOffset / 8);
+          //set 99 to all results
+          for (let i = 0; i < exprsArray.length; i++) {
+            memoryF64[resultOffset/8 + i] = 99;
+          }
+
+          // Execute WASM
+          instance.exports.evaluate(t, yOffset, pOffset, resultOffset);
+
+          // Read all results
+          const wasmResults = exprsArray.map((_, i) => 
+            memoryF64[resultOffset/8 + i]
+          );
+
+          // Calculate all JS results
+          const jsResults = exprsArray.map(expr => 
+            evaluateJS(expr, t, y, p)
+          );
+
+          // Compare results
+          const passed = wasmResults.every((wasmResult, i) => 
+            Math.abs(wasmResult - jsResults[i]) < 1e-10
+          );
+
+          testDiv.classList.add(passed ? "pass" : "fail");
+          testDiv.innerHTML = `
+            <strong>Expressions:</strong> ${expressions}<br>
+            <strong>Parameters:</strong> t=${t}, y=[${y}], p=[${p}]<br>
+            <strong>JS Results:</strong> [${jsResults.join(', ')}]<br>
+            <strong>WASM Results:</strong> [${wasmResults.join(', ')}]<br>
+            <strong>Status:</strong> ${passed ? "PASS" : "FAIL"}
+          `;
+
+          // Debug output
+          console.log("Memory layout:");
+          console.log("y values:", Array.from(memoryF64.slice(0, y.length)));
+          console.log("p values:", Array.from(memoryF64.slice(pOffset/8, pOffset/8 + p.length)));
+          console.log("results:", Array.from(memoryF64.slice(resultOffset/8, resultOffset/8 + exprsArray.length)));
+
+        } catch (error) {
+          testDiv.classList.add("fail");
+          testDiv.innerHTML = `
+                    <strong>Expressions:</strong> ${expressions}<br>
+                    <strong>Error:</strong> ${error.message}
+                `;
+          console.error("Full error:", error);
+        }
+
+        results.appendChild(testDiv);
+      }
+
+      // Test cases
+      const testCases = [
+        "t",                                    // Basic variable
+        "t,y[0]",                              // Array access
+        "t,y[0],p[0]",                         // Multiple array access
+        "t + y[0]",                            // Addition
+        "t * p[0]",                            // Multiplication
+        "(t + y[0]) * p[1]",                   // Parentheses
+        "-t",                                  // Negative number
+        "-(t + y[0])",                         // Negative expression
+        "t * y[0] + p[1]",                     // Multiple operations
+        "t * (y[0] + p[1])",                   // Nested expressions
+        "y[0] * y[1] + p[0] * p[1]",          // Complex array access
+        "(t + y[0]) * (p[0] + y[1])",         // Multiple parentheses
+        "-t * -y[0]",                          // Multiple negatives
+        "t + y[0] + y[1] + p[0] + p[1]",      // Multiple additions
+        "t * y[0] * y[1] * p[0] * p[1]",       // Multiple multiplications
+        "6.283185307179586*p[0] * y[1] + (p[1] - p[2]*(y[0]*y[0] + y[1]*y[1]))*y[0],-6.283185307179586*p[0] * y[0] + (p[1] - p[2]*(y[0]*y[0] + y[1]*y[1]))*y[1]"
+      ];
+
+      for (const testCase of testCases) {
+        await runTest(testCase);
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <style>
+        canvas {
+            border: 1px solid black;
+            background: white;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="visualizer"></canvas>
+
+    <script>
+        // First, create a Blob with the AudioWorklet code
+        const workletCode = `
+            class LissajousProcessor extends AudioWorkletProcessor {
+                constructor() {
+                    super();
+                    this.phase1 = 0;
+                    this.phase2 = 0;
+                    this.frequency1 = 2; // Hz
+                    this.frequency2 = 3; // Hz
+                }
+
+                process(inputs, outputs) {
+                    const output = outputs[0];
+                    const sampleRate = 44100;
+
+                    for (let i = 0; i < output[0].length; i++) {
+                        // Generate two sine waves with different frequencies
+                        output[0][i] = Math.sin(this.phase1);  // X coordinate
+                        output[1][i] = Math.sin(this.phase2);  // Y coordinate
+
+                        // Update phases
+                        this.phase1 += 2 * Math.PI * this.frequency1 / sampleRate;
+                        this.phase2 += 2 * Math.PI * this.frequency2 / sampleRate;
+                    }
+
+                    return true;
+                }
+            }
+
+            registerProcessor('lissajous-processor', LissajousProcessor);
+        `;
+
+        const workletBlob = new Blob([workletCode], {
+            type: 'application/javascript'
+        });
+        const workletUrl = URL.createObjectURL(workletBlob);
+
+        class LissajousVisualizer {
+            constructor() {
+                this.audioContext = new AudioContext();
+                this.canvas = document.getElementById('visualizer');
+                this.ctx = this.canvas.getContext('2d');
+                this.isRunning = false;
+
+                // Set canvas size
+                this.canvas.width = 400;
+                this.canvas.height = 400;
+
+                this.init();
+            }
+
+            async init() {
+                await this.audioContext.audioWorklet.addModule(workletUrl);
+                this.workletNode = new AudioWorkletNode(this.audioContext, 'lissajous-processor', {
+                    numberOfInputs: 0,
+                    numberOfOutputs: 1,
+                    outputChannelCount: [2]
+                });
+
+                // Start audio
+                this.workletNode.connect(this.audioContext.destination);
+                this.startVisualization();
+            }
+
+            startVisualization() {
+                this.isRunning = true;
+                this.draw();
+            }
+
+            draw() {
+                if (!this.isRunning) return;
+
+                // Clear canvas
+                this.ctx.fillStyle = 'white';
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+                // Get audio data
+                const analyser = this.audioContext.createAnalyser();
+                this.workletNode.connect(analyser);
+                const bufferLength = analyser.frequencyBinCount;
+                const dataArrayX = new Float32Array(bufferLength);
+                const dataArrayY = new Float32Array(bufferLength);
+
+                analyser.getFloatTimeDomainData(dataArrayX);
+
+                // Draw Lissajous
+                this.ctx.beginPath();
+                this.ctx.strokeStyle = 'blue';
+                this.ctx.lineWidth = 2;
+
+                // Scale and center the figure
+                const scale = 150;
+                const centerX = this.canvas.width / 2;
+                const centerY = this.canvas.height / 2;
+
+                for (let i = 0; i < bufferLength; i++) {
+                    const x = centerX + dataArrayX[i] * scale;
+                    const y = centerY + dataArrayY[i] * scale;
+
+                    if (i === 0) {
+                        this.ctx.moveTo(x, y);
+                    } else {
+                        this.ctx.lineTo(x, y);
+                    }
+                }
+
+                this.ctx.stroke();
+
+                // Continue animation
+                requestAnimationFrame(() => this.draw());
+            }
+        }
+
+        // Create visualizer when page loads
+        window.addEventListener('load', () => {
+            const visualizer = new LissajousVisualizer();
+        });
+    </script>
+</body>
+
+</html>
