@@ -1,10 +1,6 @@
-const debug = true;
-//Use dat.gui to control the parameters
 let gui = new dat.GUI();
 
-//Add play/pause button to gui
 function addPlayPauseButton(mainguiconfig, audioContext) {
-    //main folder
     let mainFolder = gui.addFolder('Sim');
     mainFolder.add(mainguiconfig, 'play').name('Play').onChange(() => {
         if (audioContext.state === 'suspended') {
@@ -15,52 +11,62 @@ function addPlayPauseButton(mainguiconfig, audioContext) {
     });
 }
 
-//create function that receives a ode config object and creates a gui folder with the name and include the parameters and gain      
-//add a button to reset the parameters to their initial values
-//add a button to change visualization type
-function createOdeGui(odeConfig, updateParameters, resetInitialConditions) {
+function createOdeGui(odeConfig, updateParameters) {
     let folder = gui.addFolder(odeConfig.name);
-    if (debug) console.log("Parameters:", odeConfig.gui_parameters);
+
     for (let parameter in odeConfig.gui_parameters) {
         let value = odeConfig.gui_parameters[parameter];
         let range = odeConfig.parameters[parameter];
-        if (Array.isArray(range)) {
-            // If parameter is array [value, min, max], use those values
-            folder.add(odeConfig.gui_parameters, parameter)
-                .min(range[1])
-                .max(range[2])
-                .step((range[2] - range[1]) / 100)
-                .onChange(updateParameters);
-        } else {
-            // If parameter is single value, use default range
-            folder.add(odeConfig.gui_parameters, parameter)
-                .min(value * 0.25)
-                .max(value * 4)
-                .step(value * 0.01)
-                .onChange(updateParameters);
-        }
+        let step = (range.max - range.min) / 100;
+
+        folder.add(odeConfig.gui_parameters, parameter)
+            .min(range.min)
+            .max(range.max)
+            .step(step > 0 ? step : 0.01)
+            .onChange(updateParameters);
     }
+
     folder.add(odeConfig, 'gain').min(0).max(1).step(0.01).onChange(updateParameters);
-    folder.add(odeConfig, 'resetInitialConditions').onChange(resetInitialConditions);
+    folder.add(odeConfig, 'resetInitialConditions');
     folder.add(odeConfig, 'detuning').min(-1).max(2).step(0.001).onChange(updateParameters);
     return folder;
 }
 
-function addMainVolumeControl(mainguiconfig, audioMixer) {
+function addMainVolumeControl(mainguiconfig, audioMixer, onChange) {
     let mainFolder = gui.addFolder('Main');
     mainFolder.add(mainguiconfig, 'mainVolume', 0, 1, 0.01)
         .name('Main Volume')
         .onChange(() => {
             audioMixer.setMainVolume(mainguiconfig.mainVolume);
+            onChange?.();
         });
 
     return mainFolder;
 }
 
-//remove folder from gui
 function removeFolder(folder) {
-    gui.removeFolder(folder);
+    if (!folder) {
+        return;
+    }
+
+    const parent = folder.parent ?? gui;
+
+    if (typeof parent.removeFolder === 'function' && parent.removeFolder !== removeFolder) {
+        parent.removeFolder(folder);
+        return;
+    }
+
+    folder.close?.();
+
+    if (folder.domElement?.parentNode) {
+        folder.domElement.parentNode.removeChild(folder.domElement);
+    }
+
+    if (folder.name && parent.__folders?.[folder.name]) {
+        delete parent.__folders[folder.name];
+    }
+
+    parent.onResize?.();
 }
 
-
-export { createOdeGui, addPlayPauseButton, addMainVolumeControl, removeFolder };
+export { addMainVolumeControl, addPlayPauseButton, createOdeGui, removeFolder };

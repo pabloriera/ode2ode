@@ -1,67 +1,72 @@
+function normalizeParameterValue(paramConfig) {
+    if (Array.isArray(paramConfig)) {
+        return Number(paramConfig[0] ?? 0);
+    }
+
+    if (paramConfig && typeof paramConfig === 'object' && 'value' in paramConfig) {
+        return Number(paramConfig.value);
+    }
+
+    return Number(paramConfig ?? 0);
+}
+
 class AudioMixer {
     constructor(audioContext) {
         this.audioContext = audioContext;
-        this.nodes = new Map(); // Map to store all input nodes
+        this.nodes = new Map();
         this.mainGainNode = audioContext.createGain();
-        this.mainGainNode.connect(audioContext.destination);
-
-        // Default main volume
         this.mainGainNode.gain.value = 0.5;
+        this.mainGainNode.connect(audioContext.destination);
     }
 
-    // Add a node to the mixer
     addNode(nodeId, node) {
-        // Create a gain node for this input
         const gainNode = this.audioContext.createGain();
         gainNode.connect(this.mainGainNode);
 
-        // Store the node and its gain
         this.nodes.set(nodeId, {
-            node: node,
+            node,
             gain: gainNode
         });
 
-        // Connect the node to its gain node
-        node.disconnect(); // Disconnect from any previous connections
+        node.disconnect();
         node.connect(gainNode);
-
         return gainNode;
     }
 
-    // Remove a node from the mixer
     removeNode(nodeId) {
         const nodeData = this.nodes.get(nodeId);
-        if (nodeData) {
-            nodeData.node.disconnect();
-            nodeData.gain.disconnect();
-            this.nodes.delete(nodeId);
+        if (!nodeData) {
+            return;
         }
+
+        nodeData.node.disconnect();
+        nodeData.gain.disconnect();
+        this.nodes.delete(nodeId);
     }
 
-    // Set individual node volume
     setNodeVolume(nodeId, volume) {
         const nodeData = this.nodes.get(nodeId);
-        if (nodeData) {
-            nodeData.gain.gain.setValueAtTime(volume, this.audioContext.currentTime);
+        if (!nodeData) {
+            return;
         }
+
+        nodeData.gain.gain.setValueAtTime(volume, this.audioContext.currentTime);
     }
 
-    // Set main output volume
     setMainVolume(volume) {
         this.mainGainNode.gain.setValueAtTime(volume, this.audioContext.currentTime);
     }
 
-    // Get main output volume
     getMainVolume() {
         return this.mainGainNode.gain.value;
     }
 
-    // Disconnect all nodes
     disconnectAll() {
-        for (const [nodeId, nodeData] of this.nodes) {
+        for (const nodeData of this.nodes.values()) {
             nodeData.node.disconnect();
             nodeData.gain.disconnect();
         }
+
         this.nodes.clear();
         this.mainGainNode.disconnect();
     }
@@ -70,7 +75,7 @@ class AudioMixer {
 class Parameter {
     constructor(audioContext, paramConfig) {
         this.audioContext = audioContext;
-        this.value = Array.isArray(paramConfig) ? paramConfig[0] : paramConfig;
+        this.value = normalizeParameterValue(paramConfig);
 
         this.parameterNode = new AudioWorkletNode(audioContext, 'parameter-generator', {
             processorOptions: {
@@ -81,10 +86,10 @@ class Parameter {
     }
 
     setValue(value) {
-        this.value = value;
+        this.value = Number(value);
         this.parameterNode.port.postMessage({
             type: 'setValue',
-            value: value
+            value: this.value
         });
     }
 
@@ -97,4 +102,4 @@ class Parameter {
     }
 }
 
-export { AudioMixer, Parameter };
+export { AudioMixer, Parameter, normalizeParameterValue };

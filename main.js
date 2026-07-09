@@ -1,43 +1,76 @@
-let debug = false;
+import { AudioMixer } from './audio.js';
+import { addMainVolumeControl, addPlayPauseButton, removeFolder } from './gui.js';
+import { ODENode } from './ode.js';
+import { VisualizationSystem } from './visual.js';
+import { loadLastSession, saveLastSession } from './src/app/session-store.js';
+import { createExampleOdeDefinition, normalizeOdeDefinition } from './src/domain/ode-definition.js';
+import { createEmptyPatchDocument, removeNodeFromPatch, upsertOdeNodeInPatch } from './src/domain/patch-document.js';
 
-/*
-This website is a playground for playing with ODEs in the browser.
+const SESSION_SAVE_DEBOUNCE_MS = 300;
 
-The main idea is to use the AudioWorklet API to generate audio from ODEs.
+let audioContext = null;
+let audioMixer = null;
+let visSystem = null;
+let wabtInstance = null;
+let odeNodes = new Map();
+let patchDocument = createEmptyPatchDocument();
+let sessionState = loadLastSession().session;
+let sessionSaveHandle = null;
+let isRestoringSession = false;
 
-The user can define an ODE using the following syntax:
+function normalizeLoadedPatchDocument(loadedPatch) {
+    const defaultPatch = createEmptyPatchDocument();
+    const safePatch = loadedPatch ?? {};
 
-{
-    equations: {x: f(x,y,t), y: g(x,y,t)}, 
-    parameters: {p1: value1, p2: value2},
-    initialValues: [x0, y0]
+    return {
+        ...defaultPatch,
+        ...safePatch,
+        mixer: {
+            ...defaultPatch.mixer,
+            ...(safePatch.mixer ?? {}),
+            channels: {
+                ...(safePatch.mixer?.channels ?? {})
+            }
+        },
+        nodes: Array.isArray(safePatch.nodes) ? safePatch.nodes : defaultPatch.nodes,
+        connections: Array.isArray(safePatch.connections) ? safePatch.connections : defaultPatch.connections
+    };
 }
 
-This will instantiate an AudioWorkletNode with the given equations, parameters, and initial values.
+function buildSessionDocument() {
+    return {
+        version: 1,
+        savedAt: new Date().toISOString(),
+        patch: patchDocument,
+        session: sessionState
+    };
+}
 
-The AudioWorkletNode will output the values of x and y as a stereo audio signal.
+function flushSessionSave() {
+    if (sessionSaveHandle) {
+        clearTimeout(sessionSaveHandle);
+        sessionSaveHandle = null;
+    }
 
-*/
+    if (!isRestoringSession) {
+        saveLastSession(buildSessionDocument());
+    }
+}
 
-import {
-    ODENode
-} from './ode.js';
+function scheduleSessionSave() {
+    if (isRestoringSession) {
+        return;
+    }
 
-import {
+    if (sessionSaveHandle) {
+        clearTimeout(sessionSaveHandle);
+    }
 
-    OdeNodeVisualizer,
-    VisualizationSystem
-} from './visual.js';
-
-import {
-    addPlayPauseButton,
-    addMainVolumeControl,
-    removeFolder
-} from './gui.js';
-
-import {
-    AudioMixer
-} from './audio.js';
+    sessionSaveHandle = window.setTimeout(() => {
+        sessionSaveHandle = null;
+        saveLastSession(buildSessionDocument());
+    }, SESSION_SAVE_DEBOUNCE_MS);
+}
 
 async function initAudio() {
     if (!audioContext) {
@@ -46,15 +79,15 @@ async function initAudio() {
             audioMixer = new AudioMixer(audioContext);
             await audioContext.audioWorklet.addModule('parameter-generator.js');
             await audioContext.audioWorklet.addModule('odeint-generator.js');
-        } catch (e) {
-            console.error("Failed to initialize audio:", e);
+        } catch (error) {
+            console.error('Failed to initialize audio:', error);
             return false;
         }
     }
+
     return true;
 }
 
-let wabtInstance = null;
 async function initWABT() {
     if (!wabtInstance) {
         wabtInstance = await window.WabtModule();
@@ -62,86 +95,119 @@ async function initWABT() {
     return wabtInstance;
 }
 
-// Replace the hardcoded configs section with a nodes management system
-let odeNodes = new Map(); // Store active ODE nodes
-
-// Initialize basic audio and visualization systems
-let audioContext = null;
-let audioMixer = null;
-let visSystem = null;
-
 async function initSystems() {
     await initAudio();
     await initWABT();
 
     audioContext.suspend();
 
-    let mainguiconfig = {
+    const mainGuiConfig = {
         play: false,
-        mainVolume: 0.5
+        mainVolume: patchDocument.mixer.masterGain
     };
 
-    addPlayPauseButton(mainguiconfig, audioContext);
-    addMainVolumeControl(mainguiconfig, audioMixer);
+    addPlayPauseButton(mainGuiConfig, audioContext);
+    addMainVolumeControl(mainGuiConfig, audioMixer, mainVolume => {
+        patchDocument = {
+            ...patchDocument,
+            mixer: {
+                ...patchDocument.mixer,
+                masterGain: mainVolume
+            }
+        };
+        scheduleSessionSave();
+    });
+
+    audioMixer.setMainVolume(mainGuiConfig.mainVolume);
 
     visSystem = new VisualizationSystem(audioContext);
     visSystem.startVisualization();
 }
 
-function addOdeNode(config) {
-    // Remove existing node with same name if it exists
-    if (odeNodes.has(config.name)) {
-        const oldNode = odeNodes.get(config.name);
-        // Remove GUI folder
-        // gui.removeFolder(oldNode.gui);
-        removeFolder(oldNode.gui);
-        // Remove from audio and visualization
-        audioMixer.removeNode(config.name);
-        visSystem.removeOdeNode(oldNode);
-        odeNodes.delete(config.name);
+function disposeOdeRuntime(nodeId, { removeFromPatch = true } = {}) {
+    const oldNode = odeNodes.get(nodeId);
+    if (!oldNode) {
+        return;
     }
 
-    // Create new node
-    const node = new ODENode(audioContext, wabtInstance, config);
-    audioMixer.addNode(config.name, node.gainNode);
-    visSystem.addOdeNode(node);
-    odeNodes.set(config.name, node);
+    removeFolder(oldNode.gui);
+    audioMixer.removeNode(nodeId);
+    visSystem.removeOdeNode(oldNode);
+    odeNodes.delete(nodeId);
+
+    if (removeFromPatch) {
+        patchDocument = removeNodeFromPatch(patchDocument, nodeId);
+        scheduleSessionSave();
+    }
 }
 
-// Add event listener for ctrl+click on textarea
-document.addEventListener('DOMContentLoaded', () => {
-    const editor = document.getElementById('ode-config-editor');
+function addOdeNode(rawConfig) {
+    const config = normalizeOdeDefinition(rawConfig);
 
-    editor.addEventListener('keydown', (event) => {
-        if (event.ctrlKey && event.key === 'Enter') {
-            try {
-                const configText = editor.value;
-                const config = JSON.parse(configText);
-                addOdeNode(config);
-            } catch (error) {
-                console.error('Failed to parse ODE configuration:', error);
-            }
-        }
+    if (odeNodes.has(config.id)) {
+        disposeOdeRuntime(config.id, { removeFromPatch: false });
+    }
+
+    patchDocument = upsertOdeNodeInPatch(patchDocument, config);
+
+    const node = new ODENode(audioContext, wabtInstance, config, nextDefinition => {
+        patchDocument = upsertOdeNodeInPatch(patchDocument, nextDefinition);
+        scheduleSessionSave();
     });
 
-    // Initialize systems
-    initSystems();
+    const channelState = patchDocument.mixer.channels[config.id];
+    audioMixer.addNode(config.id, node.gainNode, channelState.gain);
+    visSystem.addOdeNode(node);
+    odeNodes.set(config.id, node);
+    scheduleSessionSave();
+
+    return node;
+}
+
+function createExampleConfigText() {
+    return JSON.stringify(createExampleOdeDefinition(), null, 2);
+}
+
+function restorePatch(editor) {
+    const storedNodes = patchDocument.nodes.filter(node => node?.type === 'ode' && node.definition);
+
+    if (storedNodes.length === 0) {
+        editor.value = createExampleConfigText();
+        return;
+    }
+
+    isRestoringSession = true;
+    try {
+        storedNodes.forEach(node => addOdeNode(node.definition));
+        editor.value = JSON.stringify(storedNodes[storedNodes.length - 1].definition, null, 2);
+    } finally {
+        isRestoringSession = false;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    const editor = document.getElementById('ode-config-editor');
+    const storedSession = loadLastSession();
+    patchDocument = normalizeLoadedPatchDocument(storedSession.patch);
+    sessionState = storedSession.session;
+
+    await initSystems();
+
+    if (editor) {
+        restorePatch(editor);
+
+        editor.addEventListener('keydown', event => {
+            if (event.ctrlKey && event.key === 'Enter') {
+                try {
+                    const rawConfig = JSON.parse(editor.value);
+                    const node = addOdeNode(rawConfig);
+                    editor.value = JSON.stringify(node.getSerializableDefinition(), null, 2);
+                } catch (error) {
+                    console.error('Failed to parse ODE configuration:', error);
+                }
+            }
+        });
+    }
+
+    window.addEventListener('beforeunload', flushSessionSave);
 });
-
-// Example configuration to show in textarea:
-const exampleConfig = `{
-    "name": "Hopf",
-    "equations": {
-        "x": "TWO_PI*w * y + (g - b*(x*x + y*y))*x",
-        "y": "-TWO_PI*w * x + (g - b*(x*x + y*y))*y"
-    },
-    "parameters": {
-        "w": [440.0, 0.0, 6080.0],
-        "g": [1.0, -4.0, 4.0],
-        "b": [10.0, 0.0, 30.0]
-    },
-    "initialValues": { "x": 0.5, "y": 1.0 },
-    "integrationMethod": "rk4"
-}`;
-
-document.getElementById('ode-config-editor').value = exampleConfig;
