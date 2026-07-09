@@ -1,0 +1,24 @@
+{
+  "name": "harmonic_oscillator",
+  "equations": {
+    "x": "y",
+    "y": "-(w*w) * x"
+  },
+  "parameters": {
+    "w": {
+      "value": 2.0,
+      "min": 0.0,
+      "max": 10.0
+    }
+  },
+  "initialValues": {
+    "x": 1.0,
+    "y": 0.0
+  },
+  "method": "rk4",
+  "timeScale": 1.0,
+  "tStart": 0.0,
+  "tEnd": 1.0,
+  "sampleCount": 128,
+  "tolerance": 0.0001
+}

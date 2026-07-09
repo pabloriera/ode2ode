@@ -1,0 +1,3 @@
+# Numerical reference layer for ODE comparisons
+numpy
+scipy
