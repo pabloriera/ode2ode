@@ -775,9 +775,7 @@ function createUi(doc, handlers) {
         const cpu = Math.round(4 + patch.modules.length * 2 + patch.cables.length * 0.7).toString().padStart(2, "0");
         doc.querySelector('[data-readout="cpu"]').textContent = `${cpu}%`;
         doc.querySelector('[data-readout="nodes"]').textContent = `${String(patch.modules.length).padStart(2, "0")}N`;
-        doc.querySelector('[data-readout="phase"]').textContent = `PHI ${((time * 0.0001) % 1).toFixed(2)}`;
         doc.querySelector('[data-readout="master-db"]').textContent = gainToDb(patch.mixer.masterGain);
-        doc.querySelector('[data-readout="scope-db"]').textContent = gainToDb(Math.max(0.001, masterLevel));
     }
 
     function setRunning(running) {

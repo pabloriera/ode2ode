@@ -121,6 +121,23 @@ button {
   letter-spacing: 0;
 }
 
+[data-readout],
+output {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
+[data-readout="master-db"] {
+  min-width: 7ch;
+  text-align: right;
+}
+
+[data-readout="cpu"],
+[data-readout="nodes"],
+[data-readout="sample-rate"] {
+  min-width: 5ch;
+}
+
 .transport {
   display: flex;
   align-items: center;
@@ -142,6 +159,11 @@ button {
   cursor: pointer;
 }
 
+.transport .tab-button {
+  align-self: stretch;
+  min-height: 100%;
+}
+
 .tab-button.is-active,
 .tab-button:hover {
   color: var(--bg);
@@ -150,14 +172,35 @@ button {
 
 .clock-panel {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  align-items: center;
-  text-align: center;
-  font-size: 13px;
+  grid-template-rows: repeat(3, 1fr);
+  align-items: stretch;
+  font-size: 10px;
 }
 
-.clock-panel span + span {
-  border-left: 1px solid var(--dim);
+.clock-panel div {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 6ch;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+}
+
+.clock-panel div + div {
+  border-top: 1px solid var(--dim);
+}
+
+.clock-panel span {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clock-panel strong {
+  font-size: 11px;
+  font-weight: 400;
+  text-align: right;
 }
 
 .icon-button,
@@ -686,10 +729,6 @@ input[type="range"] {
   overflow: hidden;
 }
 
-.scope-panel .scope-stack {
-  flex: 0 0 auto;
-}
-
 .scope-panel .inspector-panel {
   flex: 1 1 auto;
 }
@@ -700,7 +739,6 @@ input[type="range"] {
 
 .scope-stack {
   display: grid;
-  grid-template-columns: 1fr 1fr;
   gap: 8px;
   padding: 8px;
 }
@@ -712,8 +750,7 @@ input[type="range"] {
 
 .scope-unit canvas {
   width: 100%;
-  aspect-ratio: 1 / 1;
-  height: auto;
+  height: 148px;
   display: block;
 }
 
@@ -1084,7 +1121,7 @@ input[type="range"] {
   min-height: 0;
   border-top: 1px solid var(--line);
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto 1fr;
 }
 
 .mixer-channels {
@@ -1140,8 +1177,23 @@ input[type="range"] {
 }
 
 .master-strip {
-  min-height: 54px;
+  min-height: 42px;
   padding: 0 12px;
+}
+
+.top-master {
+  grid-template-columns: 50px minmax(0, 1fr) 58px;
+  border-bottom: 1px solid var(--line);
+}
+
+.top-master output {
+  color: var(--muted);
+  font-size: 10px;
+  text-align: right;
+  min-width: 7ch;
+}
+
+.scope-panel > .master-strip {
   border-top: 1px solid var(--line);
 }
 

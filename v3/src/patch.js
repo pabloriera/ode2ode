@@ -135,9 +135,7 @@ function normalizeCable(rawCable, modulesById) {
 
 function normalizePatch(input = {}) {
     const rawModules = Array.isArray(input.modules) ? input.modules : [];
-    const modules = rawModules.length > 0
-        ? rawModules.map(normalizeModule)
-        : createDefaultPatch().modules;
+    const modules = rawModules.map(normalizeModule);
     const modulesById = new Map(modules.map(module => [module.id, module]));
     const cables = (input.cables ?? input.connections ?? [])
         .map(cable => normalizeCable(cable, modulesById))

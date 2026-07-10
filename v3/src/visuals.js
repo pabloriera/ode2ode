@@ -161,77 +161,49 @@ function drawScope(canvas, module, runtime, time) {
 function drawGlobalWaveform(canvas, patch, engine, time) {
     const { width, height, scale } = sizeCanvas(canvas);
     const ctx = canvas.getContext("2d");
-    const analyser = engine.getMasterAnalyser?.();
+    const analysers = engine.getMasterAnalysers?.();
+    const leftAnalyser = analysers?.left ?? engine.getMasterAnalyser?.();
+    const rightAnalyser = analysers?.right ?? leftAnalyser;
 
     ctx.save();
     ctx.scale(scale, scale);
 
-    if (!analyser) {
+    if (!leftAnalyser) {
         drawIdle(ctx, width, height, time, patch.modules.length);
         ctx.restore();
         return 0;
     }
 
     drawGrid(ctx, width, height, 16);
-    const buffer = getAnalyserBuffer(canvas, analyser, "master");
+    const leftBuffer = getAnalyserBuffer(canvas, leftAnalyser, "master-left");
+    const rightBuffer = getAnalyserBuffer(canvas, rightAnalyser, "master-right");
     let peak = 0;
-    ctx.strokeStyle = "#f5f5f5";
-    ctx.lineWidth = 1.4;
-    ctx.beginPath();
+    const laneHeight = height / 2;
 
-    for (let index = 0; index < buffer.length; index += 1) {
-        const value = buffer[index];
-        const x = (index / (buffer.length - 1)) * width;
-        const y = height / 2 - value * height * 0.45;
-        peak = Math.max(peak, Math.abs(value));
+    [leftBuffer, rightBuffer].forEach((buffer, laneIndex) => {
+        const centerY = laneHeight * (laneIndex + 0.5);
+        ctx.strokeStyle = laneIndex === 0 ? "#f5f5f5" : "rgba(245, 245, 245, 0.72)";
+        ctx.lineWidth = 1.25;
+        ctx.beginPath();
 
-        if (index === 0) {
-            ctx.moveTo(x, y);
-        } else {
-            ctx.lineTo(x, y);
+        for (let index = 0; index < buffer.length; index += 1) {
+            const value = buffer[index];
+            const x = (index / (buffer.length - 1)) * width;
+            const y = centerY - value * laneHeight * 0.38;
+            peak = Math.max(peak, Math.abs(value));
+
+            if (index === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
         }
-    }
 
-    ctx.stroke();
+        ctx.stroke();
+    });
+
     ctx.restore();
     return peak;
-}
-
-function drawGlobalTrajectory(canvas, patch, engine, time) {
-    const { width, height, scale } = sizeCanvas(canvas);
-    const ctx = canvas.getContext("2d");
-    const runtime = engine.getModuleRuntime?.(patch.modules[0]?.id);
-
-    ctx.save();
-    ctx.scale(scale, scale);
-
-    if (!runtime || runtime.analysers.size < 2) {
-        drawIdle(ctx, width, height, time, 4);
-        ctx.restore();
-        return;
-    }
-
-    drawGrid(ctx, width, height, 20);
-    const variables = runtime.definition.variableNames;
-    const xBuffer = getAnalyserBuffer(canvas, runtime.analysers.get(variables[0]), "global-x");
-    const yBuffer = getAnalyserBuffer(canvas, runtime.analysers.get(variables[1]), "global-y");
-    const length = Math.min(xBuffer.length, yBuffer.length);
-
-    ctx.strokeStyle = "#f5f5f5";
-    ctx.lineWidth = 1.15;
-    ctx.beginPath();
-    for (let index = 0; index < length; index += 2) {
-        const x = width / 2 + xBuffer[index] * width * 0.38;
-        const y = height / 2 - yBuffer[index] * height * 0.38;
-
-        if (index === 0) {
-            ctx.moveTo(x, y);
-        } else {
-            ctx.lineTo(x, y);
-        }
-    }
-    ctx.stroke();
-    ctx.restore();
 }
 
 function getRackZoom(stage) {
@@ -294,14 +266,13 @@ function drawCables(doc, svg, stage, content, patch, selectedCableId) {
 function createVisualSystem(doc, engine) {
     const cableLayer = doc.querySelector("[data-cable-layer]");
     const waveformCanvas = doc.querySelector('[data-scope="waveform"]');
-    const trajectoryCanvas = doc.querySelector('[data-scope="trajectory"]');
     const stage = doc.querySelector("[data-rack-stage]");
     const content = doc.querySelector("[data-rack-content]");
     let latestPatch = null;
     let latestView = {};
 
     function resize() {
-        [waveformCanvas, trajectoryCanvas, ...doc.querySelectorAll("[data-module-scope]")]
+        [waveformCanvas, ...doc.querySelectorAll("[data-module-scope]")]
             .forEach(canvas => sizeCanvas(canvas));
         if (latestPatch) {
             render(latestPatch, latestView);
@@ -322,7 +293,6 @@ function createVisualSystem(doc, engine) {
         latestView = view;
         drawCables(doc, cableLayer, stage, content, patch, view.selectedCableId);
         const masterPeak = drawGlobalWaveform(waveformCanvas, patch, engine, time);
-        drawGlobalTrajectory(trajectoryCanvas, patch, engine, time);
 
         patch.modules.forEach(module => {
             const canvas = doc.querySelector(`[data-module-scope="${module.id}"]`);

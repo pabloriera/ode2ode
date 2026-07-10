@@ -1,4 +1,4 @@
-# rk4webaudio v3
+# Ode2ode
 
 Standalone browser version of the modular ODE synth.
 
@@ -292,8 +292,7 @@ The AudioWorklet uses a `ParameterSmoother` class. When parameter values change,
 
 `visuals.js` draws:
 
-- Global oscilloscope.
-- Global trajectory view.
+- Main output L/R oscilloscope.
 - Per-module phase/scope canvases.
 - SVG patch cables.
 

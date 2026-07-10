@@ -71,6 +71,46 @@ function normalizeCustomDefinition(definition) {
     });
 }
 
+function downloadJson(value, filename) {
+    const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+}
+
+function definitionToDesignInput(definition) {
+    const normalized = normalizeOdeDefinition(definition);
+    const firstOutputScale = normalized.outputScales[normalized.variableNames[0]] ?? 0.3;
+
+    return {
+        name: normalized.name,
+        formulaText: normalized.variableNames
+            .map(variableName => `${variableName}' = ${normalized.equations[variableName]}`)
+            .join("\n"),
+        timeScale: normalized.timeScale,
+        oversample: normalized.oversample,
+        outputScale: firstOutputScale,
+        outputScales: { ...normalized.outputScales },
+        initialValues: { ...normalized.initialValues },
+        scopeMode: normalized.scopeMode
+    };
+}
+
+function extractDefinitionsFromJson(value) {
+    const candidates = Array.isArray(value)
+        ? value
+        : Array.isArray(value?.definitions)
+            ? value.definitions
+            : Array.isArray(value?.modules)
+                ? value.modules.map(module => module.definition ?? module)
+                : [value?.definition ?? value];
+
+    return candidates.map(candidate => normalizeCustomDefinition(candidate));
+}
+
 function createApp() {
     let patch = loadPatch();
     let selectedModuleId = patch.modules[0]?.id ?? null;
@@ -123,6 +163,18 @@ function createApp() {
             commit("PATCH RESET");
         },
         onSave() {
+            if (activeView === "design") {
+                const definition = saveCurrentDesignDefinition();
+
+                if (definition) {
+                    downloadJson(definition, `${definition.libraryId}-ode-definition.json`);
+                    ui.render(patch, getViewState());
+                    ui.setActiveView(activeView);
+                    ui.setStatus(`MODULE DEFINITION SAVED / ${definition.name.toUpperCase()}`);
+                }
+                return;
+            }
+
             savePatch(patch);
             exportPatch(patch);
             ui.setStatus("PATCH SAVED");
@@ -130,6 +182,34 @@ function createApp() {
         onLoadFile(file) {
             file.text()
                 .then(text => {
+                    if (activeView === "design") {
+                        const definitions = extractDefinitionsFromJson(JSON.parse(text));
+                        const latestDefinition = definitions[definitions.length - 1];
+
+                        customLibrary = [
+                            ...customLibrary.filter(item => (
+                                !definitions.some(definition => (
+                                    definition.libraryId === item.libraryId || definition.id === item.id
+                                ))
+                            )),
+                            ...definitions
+                        ];
+                        saveCustomLibrary(customLibrary);
+                        designInput = definitionToDesignInput(latestDefinition);
+                        designParameters = Object.fromEntries(
+                            latestDefinition.parameterNames.map(parameterName => [
+                                parameterName,
+                                { ...latestDefinition.parameters[parameterName] }
+                            ])
+                        );
+                        designerUi.setInitial(designInput);
+                        compileDesigner();
+                        ui.render(patch, getViewState());
+                        ui.setActiveView(activeView);
+                        ui.setStatus(`MODULE DEFINITION LOADED / ${latestDefinition.name.toUpperCase()}`);
+                        return;
+                    }
+
                     patch = importPatchText(text);
                     commit("PATCH LOADED");
                 })

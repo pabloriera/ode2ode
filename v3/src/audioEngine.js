@@ -20,6 +20,9 @@ class AudioEngine {
         this.masterGain = null;
         this.limiter = null;
         this.masterAnalyser = null;
+        this.masterSplitter = null;
+        this.masterLeftAnalyser = null;
+        this.masterRightAnalyser = null;
         this.modules = new Map();
         this.connections = new Map();
         this.patch = null;
@@ -49,9 +52,17 @@ class AudioEngine {
 
             this.masterAnalyser = this.audioContext.createAnalyser();
             this.masterAnalyser.fftSize = 2048;
+            this.masterSplitter = this.audioContext.createChannelSplitter(2);
+            this.masterLeftAnalyser = this.audioContext.createAnalyser();
+            this.masterRightAnalyser = this.audioContext.createAnalyser();
+            this.masterLeftAnalyser.fftSize = 2048;
+            this.masterRightAnalyser.fftSize = 2048;
 
             this.masterGain.connect(this.limiter);
             this.limiter.connect(this.masterAnalyser);
+            this.limiter.connect(this.masterSplitter);
+            this.masterSplitter.connect(this.masterLeftAnalyser, 0);
+            this.masterSplitter.connect(this.masterRightAnalyser, 1);
             this.limiter.connect(this.audioContext.destination);
         }
     }
@@ -332,6 +343,13 @@ class AudioEngine {
         return this.masterAnalyser;
     }
 
+    getMasterAnalysers() {
+        return {
+            left: this.masterLeftAnalyser ?? this.masterAnalyser,
+            right: this.masterRightAnalyser ?? this.masterAnalyser
+        };
+    }
+
     destroy() {
         for (const runtime of this.modules.values()) {
             this.disposeRuntime(runtime);
@@ -346,9 +364,15 @@ class AudioEngine {
         safeDisconnect(this.masterGain);
         safeDisconnect(this.limiter);
         safeDisconnect(this.masterAnalyser);
+        safeDisconnect(this.masterSplitter);
+        safeDisconnect(this.masterLeftAnalyser);
+        safeDisconnect(this.masterRightAnalyser);
         this.masterGain = null;
         this.limiter = null;
         this.masterAnalyser = null;
+        this.masterSplitter = null;
+        this.masterLeftAnalyser = null;
+        this.masterRightAnalyser = null;
         this.ready = false;
         this.workletLoaded = false;
     }

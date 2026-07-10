@@ -19,8 +19,8 @@
       <a class="brand" href="./" aria-label="rk4.web.audio v3 home">
         <span class="brand-mark" aria-hidden="true"></span>
         <span>
-          <strong>RK4</strong>
-          <small>ODE SYNTH / V3</small>
+          <strong>ODE2ODE</strong>
+          <small>MODULAR SYNTH</small>
         </span>
       </a>
 
@@ -34,14 +34,23 @@
           <span class="icon-play" aria-hidden="true"></span>
           <span class="visually-hidden">Start</span>
         </button>
-        <button class="text-button" type="button" data-action="save">SAVE</button>
-        <button class="text-button" type="button" data-action="load">LOAD</button>
+        <button class="tab-button" type="button" data-action="save">SAVE</button>
+        <button class="tab-button" type="button" data-action="load">LOAD</button>
       </div>
 
       <div class="clock-panel" aria-label="Engine readout">
-        <span data-readout="sample-rate">48.0K</span>
-        <span data-readout="cpu">03%</span>
-        <span data-readout="nodes">00N</span>
+        <div>
+          <span>SAMPLE RATE</span>
+          <strong data-readout="sample-rate">48.0K</strong>
+        </div>
+        <div>
+          <span>LOAD</span>
+          <strong data-readout="cpu">03%</strong>
+        </div>
+        <div>
+          <span>MODULES</span>
+          <strong data-readout="nodes">00N</strong>
+        </div>
       </div>
     </header>
 
@@ -70,26 +79,15 @@
         </section>
 
         <aside class="scope-panel" aria-label="Scopes and mixer">
-          <div class="panel-heading">
-            <span>OBSERVATION</span>
-            <span data-readout="phase">PHI 0.00</span>
-          </div>
+          <label class="master-strip top-master">
+            <span>MASTER</span>
+            <input type="range" min="0" max="1" step="0.01" value="0.72" data-master-gain>
+            <output data-readout="master-db">-6.0DB</output>
+          </label>
 
           <div class="scope-stack">
-            <section class="scope-unit" aria-label="Oscilloscope">
-              <div class="scope-head">
-                <span>OSCILLOSCOPE</span>
-                <span data-readout="scope-db">-12.4DB</span>
-              </div>
+            <section class="scope-unit main-scope" aria-label="Main output oscilloscope">
               <canvas data-scope="waveform"></canvas>
-            </section>
-
-            <section class="scope-unit" aria-label="Trajectory">
-              <div class="scope-head">
-                <span>TRAJECTORY</span>
-                <span data-readout="scope-xyz">X/Y</span>
-              </div>
-              <canvas data-scope="trajectory"></canvas>
             </section>
           </div>
 
@@ -98,13 +96,8 @@
           <section class="mixer-panel" aria-label="Mixer">
             <div class="panel-heading compact">
               <span>MIXER</span>
-              <span data-readout="master-db">-6.0DB</span>
             </div>
             <div class="mixer-channels" data-mixer-channels></div>
-            <label class="master-strip">
-              <span>MASTER</span>
-              <input type="range" min="0" max="1" step="0.01" value="0.72" data-master-gain>
-            </label>
           </section>
         </aside>
       </div>
@@ -174,7 +167,7 @@
     </footer>
   </div>
 
-  <input class="file-input" type="file" accept="application/json" data-load-file aria-label="Load patch file">
+  <input class="file-input" type="file" accept="application/json" data-load-file aria-label="Load JSON file">
   <script type="module" src="./src/app.js"></script>
 </body>
 </html>
