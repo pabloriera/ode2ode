@@ -1,0 +1,9 @@
+{
+  "name": "rk4webaudio-v3",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "python3 -m http.server 4173",
+    "check": "node --check src/expressionCompiler.js && node --check src/designer.js && node --check src/designerUi.js && node --check src/odeLibrary.js && node --check src/patch.js && node --check src/audioEngine.js && node --check src/worklet/ode-processor.js && node --check src/ui.js && node --check src/visuals.js && node --check src/app.js"
+  }
+}

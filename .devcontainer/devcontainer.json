@@ -1,0 +1,26 @@
+{
+  "name": "rk4webaudio",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "workspaceFolder": "/workspaces/rk4webaudio",
+  "forwardPorts": [8000],
+  "portsAttributes": {
+    "8000": {
+      "label": "static server",
+      "onAutoForward": "notify"
+    }
+  },
+  "postCreateCommand": "python3 -m venv .venv && . .venv/bin/activate && pip install --upgrade pip && if [ -f requirements.txt ]; then pip install -r requirements.txt; fi",
+  "remoteEnv": {
+    "PATH": "/workspaces/rk4webaudio/.venv/bin:${containerEnv:PATH}"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-vscode.vscode-typescript-next"
+      ]
+    }
+  }
+}

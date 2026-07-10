@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>rk4.web.audio v3</title>
+  <link rel="stylesheet" href="./style.css">
+  <script>
+    window.MathJax = {
+      tex: { inlineMath: [["\\(", "\\)"], ["$", "$"]] },
+      startup: { typeset: false }
+    };
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+</head>
+<body>
+  <div id="app" class="app-shell" data-ui-ready="false">
+    <header class="topbar" aria-label="Application controls">
+      <a class="brand" href="./" aria-label="rk4.web.audio v3 home">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>
+          <strong>RK4</strong>
+          <small>ODE SYNTH / V3</small>
+        </span>
+      </a>
+
+      <nav class="view-tabs" aria-label="Workspace view">
+        <button class="tab-button is-active" type="button" data-view-tab="patch" aria-pressed="true">PATCH</button>
+        <button class="tab-button" type="button" data-view-tab="design" aria-pressed="false">DESIGN</button>
+      </nav>
+
+      <div class="transport" role="group" aria-label="Transport">
+        <button class="icon-button" type="button" data-action="toggle-run" aria-pressed="false" title="Start audio engine">
+          <span class="icon-play" aria-hidden="true"></span>
+          <span class="visually-hidden">Start</span>
+        </button>
+        <button class="text-button" type="button" data-action="save">SAVE</button>
+        <button class="text-button" type="button" data-action="load">LOAD</button>
+      </div>
+
+      <div class="clock-panel" aria-label="Engine readout">
+        <span data-readout="sample-rate">48.0K</span>
+        <span data-readout="cpu">03%</span>
+        <span data-readout="nodes">00N</span>
+      </div>
+    </header>
+
+    <main class="workbench">
+      <div class="view-panel patch-view is-active" data-view-panel="patch">
+        <section class="rack-panel" aria-label="Modular rack workspace">
+          <div class="rack-toolbar">
+            <div>
+              <span class="section-label">PATCH FIELD</span>
+              <strong data-readout="patch-name">NULL ATTRACTOR</strong>
+            </div>
+            <span data-readout="patch-id">P-000</span>
+            <div class="toolbar-cluster" role="group" aria-label="Patch editing">
+              <button class="text-button" type="button" data-action="toggle-fold-all">FOLD ALL</button>
+              <button class="text-button" type="button" data-action="clear-cables">CLEAR</button>
+            </div>
+          </div>
+
+          <div class="rack-stage" data-rack-stage>
+            <div class="rack-content" data-rack-content>
+              <div class="grid-plane" aria-hidden="true"></div>
+              <svg class="cable-layer" data-cable-layer aria-label="Patch cables"></svg>
+              <div class="module-rack" data-module-rack></div>
+            </div>
+          </div>
+        </section>
+
+        <aside class="scope-panel" aria-label="Scopes and mixer">
+          <div class="panel-heading">
+            <span>OBSERVATION</span>
+            <span data-readout="phase">PHI 0.00</span>
+          </div>
+
+          <div class="scope-stack">
+            <section class="scope-unit" aria-label="Oscilloscope">
+              <div class="scope-head">
+                <span>OSCILLOSCOPE</span>
+                <span data-readout="scope-db">-12.4DB</span>
+              </div>
+              <canvas data-scope="waveform"></canvas>
+            </section>
+
+            <section class="scope-unit" aria-label="Trajectory">
+              <div class="scope-head">
+                <span>TRAJECTORY</span>
+                <span data-readout="scope-xyz">X/Y</span>
+              </div>
+              <canvas data-scope="trajectory"></canvas>
+            </section>
+          </div>
+
+          <section class="inspector-panel" data-inspector aria-label="Selected module settings"></section>
+
+          <section class="mixer-panel" aria-label="Mixer">
+            <div class="panel-heading compact">
+              <span>MIXER</span>
+              <span data-readout="master-db">-6.0DB</span>
+            </div>
+            <div class="mixer-channels" data-mixer-channels></div>
+            <label class="master-strip">
+              <span>MASTER</span>
+              <input type="range" min="0" max="1" step="0.01" value="0.72" data-master-gain>
+            </label>
+          </section>
+        </aside>
+      </div>
+
+      <section class="view-panel design-view" data-view-panel="design" data-designer aria-label="Module designer">
+        <section class="designer-preview" aria-label="Designed module preview">
+          <div class="panel-heading">
+            <span>MODULE DESIGN</span>
+            <span data-design-state>STANDBY</span>
+          </div>
+          <div class="designer-canvas-wrap">
+            <canvas data-design-scope></canvas>
+          </div>
+          <div class="designer-preview-bar">
+            <div class="segmented-control" role="group" aria-label="Designer visualization">
+              <button class="mini-button is-active" type="button" data-design-scope-mode="phase" aria-pressed="true">PHASE</button>
+              <button class="mini-button" type="button" data-design-scope-mode="scope" aria-pressed="false">SCOPE</button>
+              <button class="mini-button" type="button" data-design-reset>RST</button>
+            </div>
+            <span data-design-symbols>NO FORMULA</span>
+          </div>
+        </section>
+
+        <aside class="designer-side" aria-label="Formula and parameter controls">
+          <section class="formula-panel">
+            <div class="panel-heading compact">
+              <span>FORMULA</span>
+              <span>ODE</span>
+            </div>
+            <label class="design-field">
+              <span>NAME</span>
+              <input type="text" data-design-name value="Custom ODE" autocomplete="off" spellcheck="false">
+            </label>
+            <textarea data-design-formulas spellcheck="false" aria-label="ODE formulas"></textarea>
+            <div class="design-number-grid">
+              <label class="wide">
+                <span>TIME SCALE</span>
+                <output data-design-time-scale-value>80</output>
+                <input type="range" step="0.05" min="0.01" max="180" data-design-time-scale value="80">
+              </label>
+              <label>
+                <span>OSR</span>
+                <input type="number" step="1" min="1" max="16" data-design-oversample value="4">
+              </label>
+            </div>
+            <div class="designer-actions">
+              <button class="text-button" type="button" data-design-save disabled>SAVE MODEL</button>
+              <button class="text-button" type="button" data-design-add-to-patch disabled>ADD TO PATCH</button>
+            </div>
+          </section>
+
+          <section class="design-knob-panel" aria-label="Inferred parameter knobs">
+            <div class="panel-heading compact">
+              <span>STATE / PARAMETERS</span>
+              <span>VALUE MIN MAX</span>
+            </div>
+            <div class="design-variables" data-design-variables></div>
+            <div class="design-knobs" data-design-knobs></div>
+          </section>
+        </aside>
+      </section>
+    </main>
+
+    <footer class="statusbar" aria-live="polite">
+      <span data-status>READY / UI SHELL ONLINE</span>
+      <span>MONO GRID MODE</span>
+    </footer>
+  </div>
+
+  <input class="file-input" type="file" accept="application/json" data-load-file aria-label="Load patch file">
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>
